@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["public"] // ONLY public — do not include auth
+}
+
+// -------------------------------
+// Profiles Table (1:1 with User id from Supabase Auth)
+// -------------------------------
+model Profile {
+  id                     String   @id @default(uuid()) @db.Uuid
+  user_id                String   @unique @db.Uuid
+  full_name              String
+  bio                    String?
+  avatar_url             String?
+  is_onboarding_complete Boolean  @default(false)
+  created_at             DateTime @default(now()) @db.Timestamptz(3)
+  updated_at             DateTime @updatedAt @db.Timestamptz(3)
+
+  address Address? @relation(name: "ProfileAddress")
+
+  @@map("profiles")
+  @@schema("public")
+}
+
+// -------------------------------
+// Addresses Table
+// -------------------------------
+model Address {
+  id              BigInt  @id @default(autoincrement())
+  user_id         String  @unique @db.Uuid
+  neighborhood_id BigInt?
+  address_line_1  String
+  city            String
+  postal_code     String
+
+  user Profile @relation(name: "ProfileAddress", fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@map("addresses")
+  @@schema("public")
+}

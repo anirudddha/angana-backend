@@ -23,6 +23,11 @@ model Profile {
 
   address Address? @relation(name: "ProfileAddress")
 
+  memberships NeighborhoodMembership[]
+  posts       Post[]
+  likes       PostLike[]
+  comments    PostComment[]
+
   @@map("profiles")
   @@schema("public")
 }
@@ -41,5 +46,86 @@ model Address {
   user Profile @relation(name: "ProfileAddress", fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@map("addresses")
+  @@schema("public")
+}
+
+model Neighborhood {
+  id          BigInt   @id @default(autoincrement())
+  name        String
+  description String?
+  // boundaries  Unsupported("geography(Polygon, 4326)") // Add in Sprint 4
+  // center_point Unsupported("geography(Point, 4326)")  // Add in Sprint 4
+  created_at  DateTime @default(now())
+
+  memberships NeighborhoodMembership[]
+  posts       Post[]
+
+  @@map("neighborhoods")
+  @@schema("public")
+}
+
+model NeighborhoodMembership {
+  user_id         String     @db.Uuid
+  neighborhood_id BigInt
+  role            String     @default("member") // Can be 'member', 'moderator'
+  joined_at       DateTime   @default(now())
+
+  // reference Profile.user_id (Supabase user id)
+  user         Profile    @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  neighborhood Neighborhood @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, neighborhood_id]) // Composite primary key
+  @@map("neighborhood_memberships")
+  @@schema("public")
+}
+
+model Post {
+  id              BigInt         @id @default(autoincrement())
+  author_id       String         @db.Uuid
+  neighborhood_id BigInt
+  content         String         @db.Text
+  is_pinned       Boolean        @default(false)
+  created_at      DateTime       @default(now()) @db.Timestamptz(3)
+
+  // reference Profile.user_id (Supabase user id)
+  author       Profile        @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
+  neighborhood Neighborhood   @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+  likes        PostLike[]
+  comments     PostComment[]
+
+  @@index([neighborhood_id, created_at(sort: Desc)]) // Index for fast feed loading
+  @@map("posts")
+  @@schema("public")
+}
+
+model PostLike {
+  user_id    String   @db.Uuid
+  post_id    BigInt
+  created_at DateTime @default(now())
+
+  // reference Profile.user_id (Supabase user id)
+  user Profile @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  post Post    @relation(fields: [post_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, post_id])
+  @@map("post_likes")
+  @@schema("public")
+}
+
+model PostComment {
+  id                BigInt       @id @default(autoincrement())
+  post_id           BigInt
+  author_id         String       @db.Uuid
+  content           String       @db.Text
+  parent_comment_id BigInt?      // For threaded replies
+
+  post          Post          @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  // reference Profile.user_id (Supabase user id)
+  author        Profile       @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
+  parent_comment PostComment?  @relation("Replies", fields: [parent_comment_id], references: [id], onDelete: Cascade)
+  replies        PostComment[] @relation("Replies")
+  created_at     DateTime      @default(now())
+
+  @@map("post_comments")
   @@schema("public")
 }

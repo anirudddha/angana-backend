@@ -10,15 +10,12 @@ export const authenticate = asyncHandler(async (req, res, next) => {
 
   if (authHeader && authHeader.startsWith('Bearer')) {
     try {
-      // Get token from header
       token = authHeader.split(' ')[1];
 
-      // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // Attach user to the request object (without sensitive data)
       req.user = await prisma.profile.findUnique({
-        where: { id: decoded.id },
+        where: { user_id: decoded.id }, // ✅ fix here
       });
 
       if (!req.user) {
@@ -32,9 +29,7 @@ export const authenticate = asyncHandler(async (req, res, next) => {
       res.status(401);
       throw new Error('Not authorized, token failed');
     }
-  }
-
-  if (!token) {
+  } else {
     res.status(401);
     throw new Error('Not authorized, no token');
   }

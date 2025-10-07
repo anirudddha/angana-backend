@@ -1,14 +1,33 @@
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
-export const createPost = async (authorId, { content, neighborhoodId }) => {
-    // TODO: Add logic to verify user is a member of the neighborhood
-    return prisma.post.create({
-        data: {
-            content,
-            author_id: authorId,
-            neighborhood_id: neighborhoodId,
-        },
+export const createPost = async (authorId, { content, neighborhoodId, mediaUrls = [] }) => {
+    return prisma.$transaction(async (tx) => {
+        // Step 1: Create the post
+        const post = await tx.post.create({
+            data: {
+                content,
+                author_id: authorId,
+                neighborhood_id: neighborhoodId,
+            },
+        });
+
+        // Step 2: If media URLs are provided, link them to this post
+        if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
+            const mediaData = mediaUrls.map((url) => ({
+                uploader_id: authorId,
+                resource_type: 'post',
+                resource_id: post.id,
+                url,
+            }));
+
+            await tx.media.createMany({
+                data: mediaData,
+            });
+        }
+
+        // Step 3: Return the created post (you can also include media if needed)
+        return post;
     });
 };
 

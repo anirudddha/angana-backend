@@ -21,12 +21,12 @@ model Profile {
   created_at             DateTime @default(now()) @db.Timestamptz(3)
   updated_at             DateTime @updatedAt @db.Timestamptz(3)
 
-  address Address? @relation(name: "ProfileAddress")
-
-  memberships NeighborhoodMembership[]
-  posts       Post[]
-  likes       PostLike[]
-  comments    PostComment[]
+  address      Address?                @relation(name: "ProfileAddress")
+  memberships  NeighborhoodMembership[]
+  posts        Post[]
+  likes        PostLike[]
+  comments     PostComment[]
+  media        Media[]                 // ✅ added media relation here
 
   @@map("profiles")
   @@schema("public")
@@ -49,12 +49,13 @@ model Address {
   @@schema("public")
 }
 
+// -------------------------------
+// Neighborhoods
+// -------------------------------
 model Neighborhood {
   id          BigInt   @id @default(autoincrement())
   name        String
   description String?
-  // boundaries  Unsupported("geography(Polygon, 4326)") // Add in Sprint 4
-  // center_point Unsupported("geography(Point, 4326)")  // Add in Sprint 4
   created_at  DateTime @default(now())
 
   memberships NeighborhoodMembership[]
@@ -64,21 +65,26 @@ model Neighborhood {
   @@schema("public")
 }
 
+// -------------------------------
+// Neighborhood Memberships
+// -------------------------------
 model NeighborhoodMembership {
   user_id         String     @db.Uuid
   neighborhood_id BigInt
-  role            String     @default("member") // Can be 'member', 'moderator'
+  role            String     @default("member")
   joined_at       DateTime   @default(now())
 
-  // reference Profile.user_id (Supabase user id)
-  user         Profile    @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  user         Profile      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
   neighborhood Neighborhood @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
 
-  @@id([user_id, neighborhood_id]) // Composite primary key
+  @@id([user_id, neighborhood_id])
   @@map("neighborhood_memberships")
   @@schema("public")
 }
 
+// -------------------------------
+// Posts
+// -------------------------------
 model Post {
   id              BigInt         @id @default(autoincrement())
   author_id       String         @db.Uuid
@@ -87,23 +93,24 @@ model Post {
   is_pinned       Boolean        @default(false)
   created_at      DateTime       @default(now()) @db.Timestamptz(3)
 
-  // reference Profile.user_id (Supabase user id)
   author       Profile        @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
   neighborhood Neighborhood   @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
   likes        PostLike[]
   comments     PostComment[]
 
-  @@index([neighborhood_id, created_at(sort: Desc)]) // Index for fast feed loading
+  @@index([neighborhood_id, created_at(sort: Desc)])
   @@map("posts")
   @@schema("public")
 }
 
+// -------------------------------
+// Post Likes
+// -------------------------------
 model PostLike {
   user_id    String   @db.Uuid
   post_id    BigInt
   created_at DateTime @default(now())
 
-  // reference Profile.user_id (Supabase user id)
   user Profile @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
   post Post    @relation(fields: [post_id], references: [id], onDelete: Cascade)
 
@@ -112,20 +119,42 @@ model PostLike {
   @@schema("public")
 }
 
+// -------------------------------
+// Post Comments
+// -------------------------------
 model PostComment {
   id                BigInt       @id @default(autoincrement())
   post_id           BigInt
   author_id         String       @db.Uuid
   content           String       @db.Text
-  parent_comment_id BigInt?      // For threaded replies
+  parent_comment_id BigInt?
 
-  post          Post          @relation(fields: [post_id], references: [id], onDelete: Cascade)
-  // reference Profile.user_id (Supabase user id)
-  author        Profile       @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
-  parent_comment PostComment?  @relation("Replies", fields: [parent_comment_id], references: [id], onDelete: Cascade)
-  replies        PostComment[] @relation("Replies")
-  created_at     DateTime      @default(now())
+  post            Post          @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  author          Profile       @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
+  parent_comment  PostComment?  @relation("Replies", fields: [parent_comment_id], references: [id], onDelete: Cascade)
+  replies         PostComment[] @relation("Replies")
+  created_at      DateTime      @default(now())
 
   @@map("post_comments")
   @@schema("public")
 }
+
+// -------------------------------
+// ✅ Media Table (added at end)
+// -------------------------------
+model Media {
+  id            String   @id @default(uuid())
+  uploader_id   String   @db.Uuid
+  resource_type String   // e.g., 'post', 'profile_avatar'
+  resource_id   BigInt   // The ID of the post or other resource
+  url           String   @db.Text
+  created_at    DateTime @default(now())
+
+  // ✅ FIXED: Reference user_id, not id
+  uploader Profile @relation(fields: [uploader_id], references: [user_id], onDelete: Cascade)
+
+  @@index([resource_type, resource_id])
+  @@map("media")
+  @@schema("public")
+}
+

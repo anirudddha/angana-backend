@@ -24,7 +24,8 @@
     "express-async-handler": "^1.2.0",
     "google-auth-library": "^10.4.0",
     "joi": "^18.0.1",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "node-geocoder": "^4.4.1"
   },
   "devDependencies": {
     "prisma": "^6.16.3"

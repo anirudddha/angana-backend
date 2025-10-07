@@ -3,9 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  schemas  = ["public"] // ONLY public — do not include auth
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  schemas           = ["public"]
 }
 
 // -------------------------------
@@ -21,12 +21,15 @@ model Profile {
   created_at             DateTime @default(now()) @db.Timestamptz(3)
   updated_at             DateTime @updatedAt @db.Timestamptz(3)
 
-  address      Address?                @relation(name: "ProfileAddress")
-  memberships  NeighborhoodMembership[]
-  posts        Post[]
-  likes        PostLike[]
-  comments     PostComment[]
-  media        Media[]                 // ✅ added media relation here
+  // relations
+  address     Address?                 @relation(name: "ProfileAddress")
+  memberships NeighborhoodMembership[]
+  posts       Post[]
+  likes       PostLike[]
+  comments    PostComment[]
+  media       Media[] // media uploaded by this profile
+
+  marketplace_listings MarketplaceListing[]
 
   @@map("profiles")
   @@schema("public")
@@ -36,15 +39,20 @@ model Profile {
 // Addresses Table
 // -------------------------------
 model Address {
-  id              BigInt  @id @default(autoincrement())
-  user_id         String  @unique @db.Uuid
+  id              BigInt                                @id @default(autoincrement())
+  user_id         String                                @unique @db.Uuid
   neighborhood_id BigInt?
   address_line_1  String
   city            String
   postal_code     String
+  // PostGIS geography column
+  location        Unsupported("geography(Point, 4326)")
 
-  user Profile @relation(name: "ProfileAddress", fields: [user_id], references: [user_id], onDelete: Cascade)
+  // Relation to Profile: uses Profile.user_id (not Profile.id)
+  user         Profile       @relation(name: "ProfileAddress", fields: [user_id], references: [user_id], onDelete: Cascade)
+  neighborhood Neighborhood? @relation(fields: [neighborhood_id], references: [id], onDelete: SetNull)
 
+  @@index([location], map: "idx_addresses_location", type: Gist) // Geospatial index
   @@map("addresses")
   @@schema("public")
 }
@@ -53,14 +61,20 @@ model Address {
 // Neighborhoods
 // -------------------------------
 model Neighborhood {
-  id          BigInt   @id @default(autoincrement())
-  name        String
-  description String?
-  created_at  DateTime @default(now())
+  id           BigInt                                  @id @default(autoincrement())
+  name         String
+  description  String?
+  // Geometry columns
+  boundaries   Unsupported("geography(Polygon, 4326)")
+  center_point Unsupported("geography(Point, 4326)")
+  created_at   DateTime                                @default(now())
 
-  memberships NeighborhoodMembership[]
-  posts       Post[]
+  memberships          NeighborhoodMembership[]
+  posts                Post[]
+  addresses            Address[]
+  marketplace_listings MarketplaceListing[]
 
+  @@index([boundaries], map: "idx_neighborhoods_boundaries", type: Gist)
   @@map("neighborhoods")
   @@schema("public")
 }
@@ -69,11 +83,12 @@ model Neighborhood {
 // Neighborhood Memberships
 // -------------------------------
 model NeighborhoodMembership {
-  user_id         String     @db.Uuid
+  user_id         String   @db.Uuid
   neighborhood_id BigInt
-  role            String     @default("member")
-  joined_at       DateTime   @default(now())
+  role            String   @default("member")
+  joined_at       DateTime @default(now())
 
+  // references Profile.user_id (Profile.user_id is unique)
   user         Profile      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
   neighborhood Neighborhood @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
 
@@ -86,15 +101,16 @@ model NeighborhoodMembership {
 // Posts
 // -------------------------------
 model Post {
-  id              BigInt         @id @default(autoincrement())
-  author_id       String         @db.Uuid
+  id              BigInt   @id @default(autoincrement())
+  author_id       String   @db.Uuid
   neighborhood_id BigInt
-  content         String         @db.Text
-  is_pinned       Boolean        @default(false)
-  created_at      DateTime       @default(now()) @db.Timestamptz(3)
+  content         String   @db.Text
+  is_pinned       Boolean  @default(false)
+  created_at      DateTime @default(now()) @db.Timestamptz(3)
 
-  author       Profile        @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
-  neighborhood Neighborhood   @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+  // author references Profile.user_id
+  author       Profile       @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
+  neighborhood Neighborhood  @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
   likes        PostLike[]
   comments     PostComment[]
 
@@ -123,34 +139,34 @@ model PostLike {
 // Post Comments
 // -------------------------------
 model PostComment {
-  id                BigInt       @id @default(autoincrement())
+  id                BigInt  @id @default(autoincrement())
   post_id           BigInt
-  author_id         String       @db.Uuid
-  content           String       @db.Text
+  author_id         String  @db.Uuid
+  content           String  @db.Text
   parent_comment_id BigInt?
 
-  post            Post          @relation(fields: [post_id], references: [id], onDelete: Cascade)
-  author          Profile       @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
-  parent_comment  PostComment?  @relation("Replies", fields: [parent_comment_id], references: [id], onDelete: Cascade)
-  replies         PostComment[] @relation("Replies")
-  created_at      DateTime      @default(now())
+  post           Post          @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  author         Profile       @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
+  parent_comment PostComment?  @relation("Replies", fields: [parent_comment_id], references: [id], onDelete: Cascade)
+  replies        PostComment[] @relation("Replies")
+  created_at     DateTime      @default(now())
 
   @@map("post_comments")
   @@schema("public")
 }
 
 // -------------------------------
-// ✅ Media Table (added at end)
+// Media Table
 // -------------------------------
 model Media {
   id            String   @id @default(uuid())
   uploader_id   String   @db.Uuid
-  resource_type String   // e.g., 'post', 'profile_avatar'
-  resource_id   BigInt   // The ID of the post or other resource
+  resource_type String // e.g., 'post', 'profile_avatar'
+  resource_id   BigInt // The ID of the post or other resource
   url           String   @db.Text
   created_at    DateTime @default(now())
 
-  // ✅ FIXED: Reference user_id, not id
+  // uploader references Profile.user_id
   uploader Profile @relation(fields: [uploader_id], references: [user_id], onDelete: Cascade)
 
   @@index([resource_type, resource_id])
@@ -158,3 +174,26 @@ model Media {
   @@schema("public")
 }
 
+// -------------------------------
+// MarketplaceListing
+// -------------------------------
+model MarketplaceListing {
+  id              BigInt                                @id @default(autoincrement())
+  seller_id       String                                @db.Uuid
+  neighborhood_id BigInt
+  title           String
+  description     String?                               @db.Text
+  price           Float
+  category        String
+  status          String                                @default("available") // 'available', 'sold', 'pending'
+  location        Unsupported("geography(Point, 4326)")
+  created_at      DateTime                              @default(now())
+
+  // seller references Profile.user_id
+  seller       Profile      @relation(fields: [seller_id], references: [user_id], onDelete: Cascade)
+  neighborhood Neighborhood @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+
+  @@index([location], map: "idx_marketplace_listings_location", type: Gist)
+  @@map("marketplace_listings")
+  @@schema("public")
+}

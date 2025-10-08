@@ -31,6 +31,9 @@ model Profile {
 
   marketplace_listings MarketplaceListing[]
 
+  conversations ConversationParticipant[]
+  sent_messages Message[]
+
   @@map("profiles")
   @@schema("public")
 }
@@ -195,5 +198,44 @@ model MarketplaceListing {
 
   @@index([location], map: "idx_marketplace_listings_location", type: Gist)
   @@map("marketplace_listings")
+  @@schema("public")
+}
+
+model Conversation {
+  id           BigInt      @id @default(autoincrement())
+  created_at   DateTime    @default(now())
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@map("conversations")
+  @@schema("public")
+}
+
+model ConversationParticipant {
+  conversation_id BigInt
+  user_id         String   @db.Uuid
+  last_read_at    DateTime? // To track unread messages
+
+  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  user         Profile      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([conversation_id, user_id])
+  @@index([user_id])
+  @@map("conversation_participants")
+  @@schema("public")
+}
+
+model Message {
+  id              BigInt       @id @default(autoincrement())
+  conversation_id BigInt
+  sender_id       String       @db.Uuid
+  content         String       @db.Text
+  sent_at         DateTime     @default(now())
+
+  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  sender       Profile      @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+
+  @@map("messages")
   @@schema("public")
 }

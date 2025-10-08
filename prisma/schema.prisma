@@ -3,208 +3,166 @@ generator client {
 }
 
 datasource db {
-  provider          = "postgresql"
-  url               = env("DATABASE_URL")
-  schemas           = ["public"]
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["public"]
 }
 
-// -------------------------------
-// Profiles Table (1:1 with User id from Supabase Auth)
-// -------------------------------
 model Profile {
-  id                     String   @id @default(uuid()) @db.Uuid
-  user_id                String   @unique @db.Uuid
+  id                     String                    @id @default(uuid()) @db.Uuid
+  user_id                String                    @unique @db.Uuid
   full_name              String
   bio                    String?
   avatar_url             String?
-  is_onboarding_complete Boolean  @default(false)
-  created_at             DateTime @default(now()) @db.Timestamptz(3)
-  updated_at             DateTime @updatedAt @db.Timestamptz(3)
-
-  // relations
-  address     Address?                 @relation(name: "ProfileAddress")
-  memberships NeighborhoodMembership[]
-  posts       Post[]
-  likes       PostLike[]
-  comments    PostComment[]
-  media       Media[] // media uploaded by this profile
-
-  marketplace_listings MarketplaceListing[]
-
-  conversations ConversationParticipant[]
-  sent_messages Message[]
+  is_onboarding_complete Boolean                   @default(false)
+  created_at             DateTime                  @default(now()) @db.Timestamptz(3)
+  updated_at             DateTime                  @updatedAt @db.Timestamptz(3)
+  address                Address?                  @relation("ProfileAddress")
+  conversations          ConversationParticipant[]
+  device_tokens          DeviceToken[]
+  marketplace_listings   MarketplaceListing[]
+  media                  Media[]
+  sent_messages          Message[]
+  memberships            NeighborhoodMembership[]
+  comments               PostComment[]
+  likes                  PostLike[]
+  posts                  Post[]
 
   @@map("profiles")
   @@schema("public")
 }
 
-// -------------------------------
-// Addresses Table
-// -------------------------------
 model Address {
-  id              BigInt                                @id @default(autoincrement())
-  user_id         String                                @unique @db.Uuid
+  id              BigInt                   @id @default(autoincrement())
+  user_id         String                   @unique @db.Uuid
   neighborhood_id BigInt?
   address_line_1  String
   city            String
   postal_code     String
-  // PostGIS geography column
-  location        Unsupported("geography(Point, 4326)")
+  location        Unsupported("geography")
+  neighborhood    Neighborhood?            @relation(fields: [neighborhood_id], references: [id])
+  user            Profile                  @relation("ProfileAddress", fields: [user_id], references: [user_id], onDelete: Cascade)
 
-  // Relation to Profile: uses Profile.user_id (not Profile.id)
-  user         Profile       @relation(name: "ProfileAddress", fields: [user_id], references: [user_id], onDelete: Cascade)
-  neighborhood Neighborhood? @relation(fields: [neighborhood_id], references: [id], onDelete: SetNull)
-
-  @@index([location], map: "idx_addresses_location", type: Gist) // Geospatial index
+  @@index([location], map: "idx_addresses_location", type: Gist)
   @@map("addresses")
   @@schema("public")
 }
 
-// -------------------------------
-// Neighborhoods
-// -------------------------------
 model Neighborhood {
-  id           BigInt                                  @id @default(autoincrement())
-  name         String
-  description  String?
-  // Geometry columns
-  boundaries   Unsupported("geography(Polygon, 4326)")
-  center_point Unsupported("geography(Point, 4326)")
-  created_at   DateTime                                @default(now())
-
-  memberships          NeighborhoodMembership[]
-  posts                Post[]
+  id                   BigInt                   @id @default(autoincrement())
+  name                 String
+  description          String?
+  created_at           DateTime                 @default(now())
+  boundaries           Unsupported("geography")
+  center_point         Unsupported("geography")
   addresses            Address[]
   marketplace_listings MarketplaceListing[]
+  memberships          NeighborhoodMembership[]
+  posts                Post[]
 
   @@index([boundaries], map: "idx_neighborhoods_boundaries", type: Gist)
   @@map("neighborhoods")
   @@schema("public")
 }
 
-// -------------------------------
-// Neighborhood Memberships
-// -------------------------------
 model NeighborhoodMembership {
-  user_id         String   @db.Uuid
+  user_id         String       @db.Uuid
   neighborhood_id BigInt
-  role            String   @default("member")
-  joined_at       DateTime @default(now())
-
-  // references Profile.user_id (Profile.user_id is unique)
-  user         Profile      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
-  neighborhood Neighborhood @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+  role            String       @default("member")
+  joined_at       DateTime     @default(now())
+  neighborhood    Neighborhood @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+  user            Profile      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@id([user_id, neighborhood_id])
   @@map("neighborhood_memberships")
   @@schema("public")
 }
 
-// -------------------------------
-// Posts
-// -------------------------------
 model Post {
-  id              BigInt   @id @default(autoincrement())
-  author_id       String   @db.Uuid
+  id              BigInt                   @id @default(autoincrement())
+  author_id       String                   @db.Uuid
   neighborhood_id BigInt
-  content         String   @db.Text
-  is_pinned       Boolean  @default(false)
-  created_at      DateTime @default(now()) @db.Timestamptz(3)
-
-  // author references Profile.user_id
-  author       Profile       @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
-  neighborhood Neighborhood  @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
-  likes        PostLike[]
-  comments     PostComment[]
+  content         String
+  is_pinned       Boolean                  @default(false)
+  created_at      DateTime                 @default(now()) @db.Timestamptz(3)
+  content_tsv     Unsupported("tsvector")?
+  comments        PostComment[]
+  likes           PostLike[]
+  author          Profile                  @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
+  neighborhood    Neighborhood             @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
 
   @@index([neighborhood_id, created_at(sort: Desc)])
+  @@index([content_tsv], map: "idx_posts_content_tsv", type: Gin)
   @@map("posts")
   @@schema("public")
 }
 
-// -------------------------------
-// Post Likes
-// -------------------------------
 model PostLike {
   user_id    String   @db.Uuid
   post_id    BigInt
   created_at DateTime @default(now())
-
-  user Profile @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
-  post Post    @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  post       Post     @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  user       Profile  @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@id([user_id, post_id])
   @@map("post_likes")
   @@schema("public")
 }
 
-// -------------------------------
-// Post Comments
-// -------------------------------
 model PostComment {
-  id                BigInt  @id @default(autoincrement())
+  id                BigInt        @id @default(autoincrement())
   post_id           BigInt
-  author_id         String  @db.Uuid
-  content           String  @db.Text
+  author_id         String        @db.Uuid
+  content           String
   parent_comment_id BigInt?
-
-  post           Post          @relation(fields: [post_id], references: [id], onDelete: Cascade)
-  author         Profile       @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
-  parent_comment PostComment?  @relation("Replies", fields: [parent_comment_id], references: [id], onDelete: Cascade)
-  replies        PostComment[] @relation("Replies")
-  created_at     DateTime      @default(now())
+  created_at        DateTime      @default(now())
+  author            Profile       @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
+  parent_comment    PostComment?  @relation("Replies", fields: [parent_comment_id], references: [id], onDelete: Cascade)
+  replies           PostComment[] @relation("Replies")
+  post              Post          @relation(fields: [post_id], references: [id], onDelete: Cascade)
 
   @@map("post_comments")
   @@schema("public")
 }
 
-// -------------------------------
-// Media Table
-// -------------------------------
 model Media {
   id            String   @id @default(uuid())
   uploader_id   String   @db.Uuid
-  resource_type String // e.g., 'post', 'profile_avatar'
-  resource_id   BigInt // The ID of the post or other resource
-  url           String   @db.Text
+  resource_type String
+  resource_id   BigInt
+  url           String
   created_at    DateTime @default(now())
-
-  // uploader references Profile.user_id
-  uploader Profile @relation(fields: [uploader_id], references: [user_id], onDelete: Cascade)
+  uploader      Profile  @relation(fields: [uploader_id], references: [user_id], onDelete: Cascade)
 
   @@index([resource_type, resource_id])
   @@map("media")
   @@schema("public")
 }
 
-// -------------------------------
-// MarketplaceListing
-// -------------------------------
 model MarketplaceListing {
-  id              BigInt                                @id @default(autoincrement())
-  seller_id       String                                @db.Uuid
+  id              BigInt                   @id @default(autoincrement())
+  seller_id       String                   @db.Uuid
   neighborhood_id BigInt
   title           String
-  description     String?                               @db.Text
+  description     String?
   price           Float
   category        String
-  status          String                                @default("available") // 'available', 'sold', 'pending'
-  location        Unsupported("geography(Point, 4326)")
-  created_at      DateTime                              @default(now())
-
-  // seller references Profile.user_id
-  seller       Profile      @relation(fields: [seller_id], references: [user_id], onDelete: Cascade)
-  neighborhood Neighborhood @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+  status          String                   @default("available")
+  location        Unsupported("geography")
+  created_at      DateTime                 @default(now())
+  content_tsv     Unsupported("tsvector")?
+  neighborhood    Neighborhood             @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+  seller          Profile                  @relation(fields: [seller_id], references: [user_id], onDelete: Cascade)
 
   @@index([location], map: "idx_marketplace_listings_location", type: Gist)
+  @@index([content_tsv], map: "idx_marketplace_listings_content_tsv", type: Gin)
   @@map("marketplace_listings")
   @@schema("public")
 }
 
 model Conversation {
-  id           BigInt      @id @default(autoincrement())
-  created_at   DateTime    @default(now())
-
+  id           BigInt                    @id @default(autoincrement())
+  created_at   DateTime                  @default(now())
   participants ConversationParticipant[]
   messages     Message[]
 
@@ -214,11 +172,10 @@ model Conversation {
 
 model ConversationParticipant {
   conversation_id BigInt
-  user_id         String   @db.Uuid
-  last_read_at    DateTime? // To track unread messages
-
-  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  user         Profile      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_id         String       @db.Uuid
+  last_read_at    DateTime?
+  conversation    Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  user            Profile      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@id([conversation_id, user_id])
   @@index([user_id])
@@ -230,12 +187,24 @@ model Message {
   id              BigInt       @id @default(autoincrement())
   conversation_id BigInt
   sender_id       String       @db.Uuid
-  content         String       @db.Text
+  content         String
   sent_at         DateTime     @default(now())
-
-  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  sender       Profile      @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+  conversation    Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  sender          Profile      @relation(fields: [sender_id], references: [id], onDelete: Cascade)
 
   @@map("messages")
+  @@schema("public")
+}
+
+model DeviceToken {
+  id          BigInt   @id @default(autoincrement())
+  user_id     String   @db.Uuid
+  token       String   @unique
+  device_type String
+  provider    String   @default("fcm")
+  created_at  DateTime @default(now())
+  user        Profile  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("device_tokens")
   @@schema("public")
 }

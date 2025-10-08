@@ -7,6 +7,8 @@ import mediaRoutes from './media.routes.js'; // Import
 import addressRoutes from './address.routes.js'; // Import
 import marketplaceRoutes from './marketplace.routes.js'; // Import
 import conversationRoutes from './conversations.routes.js'; // <-- IMPORT a new routes
+import notificationRoutes from './notifications.routes.js';
+import searchRoutes from './search.routes.js';
 
 const router = Router();
 
@@ -18,5 +20,8 @@ router.use('/media', mediaRoutes); // Add
 router.use('/addresses', addressRoutes);
 router.use('/marketplace', marketplaceRoutes);
 router.use('/conversations', conversationRoutes); // <-- USE the new routes
+
+router.use('/notifications', notificationRoutes);
+router.use('/search', searchRoutes);
 
 export default router;

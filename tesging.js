@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 
 const token = jwt.sign(
-  { id: "33353894-2820-4655-81d2-0548339ad3bc" },
+  { id: "b53ffc97-c791-4582-969b-a02bc9c1c1d1" },
   "this-project-need-to-be-the-scuccesful-and-good",
   { expiresIn: "1h" }
 );

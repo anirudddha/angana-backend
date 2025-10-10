@@ -20,7 +20,7 @@ export const updateUserProfile = async (userId, data) => {
 export const getPublicUserProfile = async (userId) => {
   // Use `select` to ensure we only return safe, public-facing data.
   return prisma.profile.findUnique({
-    where: { id: userId },
+    where: { user_id: userId },
     select: {
       id: true,
       full_name: true,

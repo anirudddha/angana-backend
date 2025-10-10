@@ -83,16 +83,21 @@ export const initializeSocketIO = (httpServer) => {
     }
 
     try {
+      // Verify JWT
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      // NOTE: adjust this if your JWT payload uses a different key (e.g., user_id)
-      // Here we expect `decoded.id` to be the Profile.id
-      const user = await prisma.profile.findUnique({ where: { id: decoded.id } });
+
+      // IMPORTANT: use the same lookup as your express middleware:
+      // find profile by user_id (not by id)
+      const user = await prisma.profile.findUnique({
+        where: { user_id: decoded.id }, // <-- same as express authenticate middleware
+      });
 
       if (!user) {
         return next(new Error('Authentication error: User not found.'));
       }
 
-      socket.user = user; // attach user object to socket
+      // Attach the user object to socket for later handlers
+      socket.user = user;
       return next();
     } catch (err) {
       console.error('Authentication middleware error:', err.message);

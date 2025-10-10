@@ -16,3 +16,17 @@ export const updateUserProfile = async (userId, data) => {
     },
   });
 };
+
+export const getPublicUserProfile = async (userId) => {
+  // Use `select` to ensure we only return safe, public-facing data.
+  return prisma.profile.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      full_name: true,
+      bio: true,
+      avatar_url: true,
+      created_at: true, // Useful for showing "Member since..."
+    },
+  });
+};

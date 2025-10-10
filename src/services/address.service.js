@@ -2,7 +2,13 @@ import NodeGeocoder from 'node-geocoder';
 import { PrismaClient, Prisma } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const geocoder = NodeGeocoder({ provider: 'openstreetmap' });
+
+// const geocoder = NodeGeocoder({ provider: 'openstreetmap' });
+
+const geocoder = NodeGeocoder({
+  provider: 'openstreetmap',
+  userAgent: 'NeighborhoodConnectApp/1.0 (blackperl06@angana.com)',
+});
 
 /**
  * Sets a user's address, geocodes it, finds their neighborhood,

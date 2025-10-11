@@ -42,3 +42,15 @@ export const searchListingsController = asyncHandler(async (req, res) => {
   const safeListings = convertBigIntToString(listings);
   res.status(200).json(safeListings);
 });
+
+export const getListingByIdController = asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  const listing = await marketplaceService.getListingById(id);
+
+  if (!listing) {
+    res.status(404);
+    throw new Error('Listing not found');
+  }
+
+  res.status(200).json(listing);
+});

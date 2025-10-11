@@ -104,3 +104,38 @@ export const searchListings = async (filters) => {
     return r;
   });
 };
+
+export const getListingById = async (id) => {
+  const listingId = typeof id === 'string' ? BigInt(id) : id;
+
+  const rows = await prisma.$queryRawUnsafe(
+    `
+    SELECT
+      id,
+      seller_id,
+      neighborhood_id,
+      title,
+      description,
+      price,
+      category,
+      status,
+      ST_AsText(location) AS location,      -- cast geography to text
+      created_at,
+      content_tsv::text AS content_tsv      -- cast tsvector to text
+    FROM marketplace_listings
+    WHERE id = $1::bigint
+    LIMIT 1;
+    `,
+    listingId
+  );
+
+  if (!rows || rows.length === 0) return null;
+
+  const listing = rows[0];
+
+  // Convert BigInt fields to string for safe JSON
+  if (typeof listing.id === 'bigint') listing.id = listing.id.toString();
+  if (typeof listing.neighborhood_id === 'bigint') listing.neighborhood_id = listing.neighborhood_id.toString();
+
+  return listing;
+};

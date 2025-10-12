@@ -2,16 +2,15 @@ import asyncHandler from 'express-async-handler';
 import * as postService from '../services/post.service.js';
 
 export const createPostController = asyncHandler(async (req, res) => {
-    const { content, neighborhoodId, mediaUrls } = req.body;
+    const { content, mediaUrls } = req.body;
 
-    if (!content || !neighborhoodId) {
+    if (!content) {
         res.status(400);
         throw new Error('Content and neighborhoodId are required.');
     }
 
     const post = await postService.createPost(req.user.user_id, {
         content,
-        neighborhoodId: Number(neighborhoodId),
         mediaUrls, // optional array of image/video URLs
     });
 

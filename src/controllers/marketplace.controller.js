@@ -18,9 +18,9 @@ function convertBigIntToString(value) {
 }
 
 export const createListingController = asyncHandler(async (req, res) => {
-  const { title, description, price, category } = req.body;
+  const { title, description, price, category, mediaUrls } = req.body;
   const listing = await marketplaceService.createListing(req.user.user_id, {
-    title, description, price, category
+    title, description, price, category, mediaUrls
   });
 
   // Convert BigInt -> string before sending JSON

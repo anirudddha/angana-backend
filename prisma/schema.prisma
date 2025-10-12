@@ -4,7 +4,8 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = env("DIRECT_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
   schemas  = ["public"]
 }
 
@@ -90,6 +91,7 @@ model Post {
   likes           PostLike[]
   author          Profile                  @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
   neighborhood    Neighborhood             @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+  media Media[]
 
   @@index([neighborhood_id, created_at(sort: Desc)])
   @@index([content_tsv], map: "idx_posts_content_tsv", type: Gin)
@@ -128,13 +130,18 @@ model PostComment {
 model Media {
   id            String   @id @default(uuid())
   uploader_id   String   @db.Uuid
-  resource_type String
-  resource_id   BigInt
+
   url           String
+
+  post_id                BigInt?
+  marketplace_listing_id BigInt?
+
   created_at    DateTime @default(now())
   uploader      Profile  @relation(fields: [uploader_id], references: [user_id], onDelete: Cascade)
 
-  @@index([resource_type, resource_id])
+  post                Post?               @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  marketplace_listing MarketplaceListing? @relation(fields: [marketplace_listing_id], references: [id], onDelete: Cascade)
+
   @@map("media")
   @@schema("public")
 }
@@ -153,6 +160,7 @@ model MarketplaceListing {
   content_tsv     Unsupported("tsvector")?
   neighborhood    Neighborhood             @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
   seller          Profile                  @relation(fields: [seller_id], references: [user_id], onDelete: Cascade)
+  media Media[]
 
   @@index([location], map: "idx_marketplace_listings_location", type: Gist)
   @@index([content_tsv], map: "idx_marketplace_listings_content_tsv", type: Gin)

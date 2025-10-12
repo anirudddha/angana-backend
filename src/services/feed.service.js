@@ -37,6 +37,12 @@ export const getUserFeed = async (userId, page = 1, limit = 10) => {
           comments: true,
         },
       },
+      media: {               // <-- ADD THIS BLOCK
+        select: {
+          id: true,
+          url: true,
+        },
+      },
     },
     orderBy: { created_at: 'desc' },
     skip: (page - 1) * limit,
@@ -62,6 +68,7 @@ export const getUserFeed = async (userId, page = 1, limit = 10) => {
 
   const likedPostIds = new Set(userLikes.map(like => like.post_id));
 
+  // 4. Return posts with media and liked info
   return posts.map(post => ({
     ...post,
     has_liked: likedPostIds.has(post.id),

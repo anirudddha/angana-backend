@@ -3,15 +3,16 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
-  schemas  = ["public"]
+  schemas           = ["public"]
 }
 
 model Profile {
   id                     String                    @id @default(uuid()) @db.Uuid
   user_id                String                    @unique @db.Uuid
+  role                   String                    @default("resident")
   full_name              String
   bio                    String?
   avatar_url             String?
@@ -29,6 +30,8 @@ model Profile {
   likes                  PostLike[]
   posts                  Post[]
 
+  business_profile BusinessProfile?
+
   @@map("profiles")
   @@schema("public")
 }
@@ -43,6 +46,9 @@ model Address {
   location        Unsupported("geography")
   neighborhood    Neighborhood?            @relation(fields: [neighborhood_id], references: [id])
   user            Profile                  @relation("ProfileAddress", fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  business_profile_id BigInt?          @unique
+  business_profile    BusinessProfile? @relation(fields: [business_profile_id], references: [id], onDelete: SetNull)
 
   @@index([location], map: "idx_addresses_location", type: Gist)
   @@map("addresses")
@@ -60,6 +66,7 @@ model Neighborhood {
   marketplace_listings MarketplaceListing[]
   memberships          NeighborhoodMembership[]
   posts                Post[]
+  deals                Deal[]
 
   @@index([boundaries], map: "idx_neighborhoods_boundaries", type: Gist)
   @@map("neighborhoods")
@@ -91,7 +98,7 @@ model Post {
   likes           PostLike[]
   author          Profile                  @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
   neighborhood    Neighborhood             @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
-  media Media[]
+  media           Media[]
 
   @@index([neighborhood_id, created_at(sort: Desc)])
   @@index([content_tsv], map: "idx_posts_content_tsv", type: Gin)
@@ -128,19 +135,22 @@ model PostComment {
 }
 
 model Media {
-  id            String   @id @default(uuid())
-  uploader_id   String   @db.Uuid
+  id          String @id @default(uuid())
+  uploader_id String @db.Uuid
 
-  url           String
+  url String
 
   post_id                BigInt?
   marketplace_listing_id BigInt?
 
-  created_at    DateTime @default(now())
-  uploader      Profile  @relation(fields: [uploader_id], references: [user_id], onDelete: Cascade)
+  created_at DateTime @default(now())
+  uploader   Profile  @relation(fields: [uploader_id], references: [user_id], onDelete: Cascade)
 
   post                Post?               @relation(fields: [post_id], references: [id], onDelete: Cascade)
   marketplace_listing MarketplaceListing? @relation(fields: [marketplace_listing_id], references: [id], onDelete: Cascade)
+
+  deal_id BigInt?
+  deal    Deal?   @relation(fields: [deal_id], references: [id], onDelete: Cascade)
 
   @@map("media")
   @@schema("public")
@@ -160,7 +170,7 @@ model MarketplaceListing {
   content_tsv     Unsupported("tsvector")?
   neighborhood    Neighborhood             @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
   seller          Profile                  @relation(fields: [seller_id], references: [user_id], onDelete: Cascade)
-  media Media[]
+  media           Media[]
 
   @@index([location], map: "idx_marketplace_listings_location", type: Gist)
   @@index([content_tsv], map: "idx_marketplace_listings_content_tsv", type: Gin)
@@ -214,5 +224,51 @@ model DeviceToken {
   user        Profile  @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("device_tokens")
+  @@schema("public")
+}
+
+model BusinessProfile {
+  id            BigInt   @id @default(autoincrement())
+  profile_id    String   @unique @db.Uuid // One-to-one link to the user's main profile
+  business_name String
+  category      String // e.g., 'Restaurant', 'Retail', 'Services'
+  description   String?  @db.Text
+  phone_number  String?
+  website       String?
+  status        String   @default("pending") // 'pending', 'verified', 'rejected'
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  // Relation back to the main profile
+  profile Profile  @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  // A business can have many deals
+  deals   Deal[]
+  // A business is located at a specific address
+  address Address?
+
+  @@map("business_profiles")
+  @@schema("public")
+}
+
+// NEW MODEL: Deal
+model Deal {
+  id              BigInt    @id @default(autoincrement())
+  business_id     BigInt // Foreign key to BusinessProfile
+  neighborhood_id BigInt
+  title           String
+  description     String    @db.Text
+  deal_type       String // 'discount', 'coupon', 'service'
+  coupon_code     String?
+  start_date      DateTime?
+  end_date        DateTime?
+  status          String    @default("active") // 'active', 'inactive', 'expired'
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  business     BusinessProfile @relation(fields: [business_id], references: [id], onDelete: Cascade)
+  neighborhood Neighborhood    @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+  media        Media[] // Deals can have images
+
+  @@map("deals")
   @@schema("public")
 }

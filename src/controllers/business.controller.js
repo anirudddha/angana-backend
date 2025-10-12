@@ -1,0 +1,115 @@
+import asyncHandler from 'express-async-handler';
+import { applyForBusinessAccount } from '../services/business.service.js';
+import { updateBusinessDetails } from '../services/business.service.js';
+
+/**
+ * @desc    Apply for a business account
+ * @route   POST /api/v1/business/apply
+ * @access  Private
+ */
+export const applyForBusinessAccountController = asyncHandler(async (req, res) => {
+    try {
+        // Pull authenticated user identifier from req.user in a flexible way.
+        // Many auth systems put profile.id in req.user.id or profile.user_id in req.user.user_id.
+        const authUserId = req.user?.id ?? req.user?.user_id ?? req.user?.userId;
+        if (!authUserId) {
+            return res.status(401).json({ message: 'Unauthorized: missing user id in request context' });
+        }
+
+        // Prevent already-business users from applying again
+        // If your req.user.role is reliable, use it; otherwise the service will check again.
+        if (req.user?.role === 'business') {
+            return res.status(400).json({ message: 'You already have a business account.' });
+        }
+
+        const { business_name, category, description, addressData } = req.body;
+
+        if (!business_name || !category || !addressData) {
+            return res.status(400).json({ message: 'business_name, category and addressData are required in the body.' });
+        }
+
+        const businessProfile = await applyForBusinessAccount(authUserId, {
+            business_name,
+            category,
+            description,
+            addressData,
+        });
+
+        // Prisma returns BigInt for the businessProfile.id (and possibly other fields).
+        // Convert BigInt values to strings so JSON.stringify doesn't blow up.
+        const safeBusinessProfile = {
+            ...businessProfile,
+            id: businessProfile.id?.toString?.() ?? businessProfile.id,
+            business_name: businessProfile.business_name,
+            category: businessProfile.category,
+            description: businessProfile.description,
+            status: businessProfile.status,
+            created_at: businessProfile.created_at,
+            updated_at: businessProfile.updated_at,
+        };
+
+        res.status(201).json({
+            message: 'Business account application submitted successfully and is pending review.',
+            businessProfile: safeBusinessProfile,
+        });
+    } catch (error) {
+        console.error('applyForBusinessAccountController error:', error);
+
+        // Map some expected error codes to HTTP status codes
+        if (error.code === 'PROFILE_NOT_FOUND') {
+            return res.status(404).json({ message: 'Profile not found for the authenticated user.' });
+        }
+        if (error.code === 'ALREADY_BUSINESS') {
+            return res.status(400).json({ message: 'You already have or previously applied for a business account.' });
+        }
+
+        // Unexpected error
+        res.status(500).json({ message: 'Something went wrong while applying for a business account.' });
+    }
+});
+
+const toSafeJson = (data) => {
+    return JSON.parse(
+        JSON.stringify(
+            data,
+            (_, value) => (typeof value === 'bigint' ? value.toString() : value)
+        )
+    );
+};
+
+/**
+ * @desc    Update business details (name, category, description, address)
+ * @route   PUT /api/v1/business/update
+ * @access  Private (Business only)
+ */
+export const updateBusinessController = asyncHandler(async (req, res) => {
+    const businessId = Number(req.params.id); // or BigInt(req.params.id) if your route uses BigInt
+    const updateData = req.body;
+
+    if (!updateData) {
+        return res.status(400).json({ message: 'Update data is required.' });
+    }
+
+    try {
+        const updatedBusiness = await updateBusinessDetails(businessId, updateData);
+
+        // Convert BigInt fields to string
+        const safeBusiness = (function convertBigInt(obj) {
+            if (Array.isArray(obj)) return obj.map(convertBigInt);
+            if (obj && typeof obj === 'object') {
+                return Object.fromEntries(
+                    Object.entries(obj).map(([k, v]) => [
+                        k,
+                        typeof v === 'bigint' ? v.toString() : convertBigInt(v),
+                    ])
+                );
+            }
+            return obj;
+        })(updatedBusiness);
+
+        res.json({ message: 'Business updated successfully', updatedBusiness: safeBusiness });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to update business.' });
+    }
+});

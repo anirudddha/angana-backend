@@ -9,6 +9,8 @@ import marketplaceRoutes from './marketplace.routes.js'; // Import
 import conversationRoutes from './conversations.routes.js'; // <-- IMPORT a new routes
 import notificationRoutes from './notifications.routes.js';
 import searchRoutes from './search.routes.js';
+import businessRoutes from './business.routes.js'; // <-- ADD THIS
+import dealRoutes from './deals.routes.js';       // <-- ADD THIS
 
 const router = Router();
 
@@ -23,5 +25,8 @@ router.use('/conversations', conversationRoutes); // <-- USE the new routes
 
 router.use('/notifications', notificationRoutes);
 router.use('/search', searchRoutes);
+
+router.use('/business', businessRoutes); // <-- ADD THIS
+router.use('/deals', dealRoutes);         // <-- ADD THIS
 
 export default router;

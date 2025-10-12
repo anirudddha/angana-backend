@@ -1,5 +1,5 @@
 import asyncHandler from 'express-async-handler';
-import { createDeal, getDealsForNeighborhood, updateDeal } from '../services/deal.service.js';
+import { createDeal, getDealsForNeighborhood, updateDeal, getDealById } from '../services/deal.service.js';
 
 export const createDealController = asyncHandler(async (req, res) => {
   try {
@@ -57,5 +57,26 @@ export const updateDealController = asyncHandler(async (req, res) => {
   } catch (error) {
     console.error('updateDealController error:', error);
     res.status(500).json({ message: error.message || 'Failed to update deal' });
+  }
+});
+
+export const getDealByIdController = asyncHandler(async (req, res) => {
+  try {
+    const idParam = req.params.id;
+    if (!idParam) return res.status(400).json({ message: 'Deal id is required in params.' });
+
+    let dealId;
+    try {
+      dealId = BigInt(idParam);
+    } catch (e) {
+      return res.status(400).json({ message: 'Invalid deal id. Must be numeric.' });
+    }
+
+    const deal = await getDealById(dealId);
+    res.status(200).json({ deal });
+  } catch (err) {
+    console.error('getDealByIdController error:', err);
+    if (err.code === 'DEAL_NOT_FOUND') return res.status(404).json({ message: 'Deal not found.' });
+    res.status(500).json({ message: err.message || 'Failed to fetch deal.' });
   }
 });

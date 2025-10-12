@@ -6,6 +6,7 @@ import {
   createDealController,
   getDealsForNeighborhoodController,
   updateDealController, // <-- add this import
+  getDealByIdController
 } from '../controllers/deals.controller.js';
 // TODO: Add Zod validation schemas
 
@@ -22,5 +23,7 @@ router.put('/:id', checkVerifiedBusiness, updateDealController); // <-- new rout
 
 // Route for fetching deals - any logged-in user can access this
 router.get('/neighborhood/:id', getDealsForNeighborhoodController);
+
+router.get('/:id', getDealByIdController);
 
 export default router;

@@ -190,3 +190,33 @@ export const updateDeal = async (businessId, dealId, updateData = {}) => {
         };
     });
 };
+
+export const getDealById = async (dealIdRaw) => {
+    if (!dealIdRaw) throw new Error('dealId is required');
+  
+    const dealId = typeof dealIdRaw === 'bigint' ? dealIdRaw : BigInt(dealIdRaw);
+  
+    const deal = await prisma.deal.findUnique({
+      where: { id: dealId },
+      include: {
+        media: { select: { id: true, url: true } },
+        business: { select: { id: true, business_name: true, category: true } },
+        neighborhood: { select: { id: true, name: true } },
+      },
+    });
+  
+    if (!deal) throw Object.assign(new Error('Deal not found'), { code: 'DEAL_NOT_FOUND' });
+  
+    // Convert BigInt fields to strings for JSON safety
+    const safe = {
+      ...deal,
+      id: deal.id.toString(),
+      business_id: deal.business_id?.toString(),
+      neighborhood_id: deal.neighborhood_id?.toString(),
+      media: (deal.media || []).map((m) => ({ ...m, id: m.id.toString() })),
+      business: deal.business ? { ...deal.business, id: deal.business.id?.toString?.() ?? deal.business.id } : null,
+      neighborhood: deal.neighborhood ? { ...deal.neighborhood, id: deal.neighborhood.id?.toString?.() ?? deal.neighborhood.id } : null,
+    };
+  
+    return safe;
+  };

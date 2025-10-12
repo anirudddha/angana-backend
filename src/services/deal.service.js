@@ -193,30 +193,54 @@ export const updateDeal = async (businessId, dealId, updateData = {}) => {
 
 export const getDealById = async (dealIdRaw) => {
     if (!dealIdRaw) throw new Error('dealId is required');
-  
+
     const dealId = typeof dealIdRaw === 'bigint' ? dealIdRaw : BigInt(dealIdRaw);
-  
+
     const deal = await prisma.deal.findUnique({
-      where: { id: dealId },
-      include: {
-        media: { select: { id: true, url: true } },
-        business: { select: { id: true, business_name: true, category: true } },
-        neighborhood: { select: { id: true, name: true } },
-      },
+        where: { id: dealId },
+        include: {
+            media: { select: { id: true, url: true } },
+            business: { select: { id: true, business_name: true, category: true } },
+            neighborhood: { select: { id: true, name: true } },
+        },
     });
-  
+
     if (!deal) throw Object.assign(new Error('Deal not found'), { code: 'DEAL_NOT_FOUND' });
-  
+
     // Convert BigInt fields to strings for JSON safety
     const safe = {
-      ...deal,
-      id: deal.id.toString(),
-      business_id: deal.business_id?.toString(),
-      neighborhood_id: deal.neighborhood_id?.toString(),
-      media: (deal.media || []).map((m) => ({ ...m, id: m.id.toString() })),
-      business: deal.business ? { ...deal.business, id: deal.business.id?.toString?.() ?? deal.business.id } : null,
-      neighborhood: deal.neighborhood ? { ...deal.neighborhood, id: deal.neighborhood.id?.toString?.() ?? deal.neighborhood.id } : null,
+        ...deal,
+        id: deal.id.toString(),
+        business_id: deal.business_id?.toString(),
+        neighborhood_id: deal.neighborhood_id?.toString(),
+        media: (deal.media || []).map((m) => ({ ...m, id: m.id.toString() })),
+        business: deal.business ? { ...deal.business, id: deal.business.id?.toString?.() ?? deal.business.id } : null,
+        neighborhood: deal.neighborhood ? { ...deal.neighborhood, id: deal.neighborhood.id?.toString?.() ?? deal.neighborhood.id } : null,
     };
-  
+
     return safe;
-  };
+};
+
+export const getDealsForBusiness = async (businessId) => {
+    const bId = typeof businessId === 'bigint' ? businessId : BigInt(businessId);
+
+    const deals = await prisma.deal.findMany({
+        where: { business_id: bId },
+        include: {
+            media: { select: { id: true, url: true } },
+            neighborhood: { select: { name: true } },
+        },
+        orderBy: { created_at: 'desc' },
+    });
+
+    return deals.map((d) => ({
+        ...d,
+        id: d.id.toString(),
+        business_id: d.business_id.toString(),
+        neighborhood_id: d.neighborhood_id?.toString(),
+        media: (d.media || []).map((m) => ({
+            ...m,
+            id: m.id.toString(),
+        })),
+    }));
+};

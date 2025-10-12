@@ -1,5 +1,5 @@
 import asyncHandler from 'express-async-handler';
-import { createDeal, getDealsForNeighborhood, updateDeal, getDealById } from '../services/deal.service.js';
+import { createDeal, getDealsForNeighborhood, updateDeal, getDealById, getDealsForBusiness } from '../services/deal.service.js';
 
 export const createDealController = asyncHandler(async (req, res) => {
   try {
@@ -78,5 +78,22 @@ export const getDealByIdController = asyncHandler(async (req, res) => {
     console.error('getDealByIdController error:', err);
     if (err.code === 'DEAL_NOT_FOUND') return res.status(404).json({ message: 'Deal not found.' });
     res.status(500).json({ message: err.message || 'Failed to fetch deal.' });
+  }
+});
+
+export const getMyDealsController = asyncHandler(async (req, res) => {
+  try {
+    const businessProfile = req.businessProfile;
+
+    if (!businessProfile) {
+      return res.status(403).json({ message: 'Business profile not found or not verified.' });
+    }
+
+    const deals = await getDealsForBusiness(businessProfile.id);
+
+    res.status(200).json({ deals });
+  } catch (error) {
+    console.error('getMyDealsController error:', error);
+    res.status(500).json({ message: error.message || 'Failed to fetch deals.' });
   }
 });

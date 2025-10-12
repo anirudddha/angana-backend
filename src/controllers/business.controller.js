@@ -1,6 +1,6 @@
 import asyncHandler from 'express-async-handler';
 import { applyForBusinessAccount } from '../services/business.service.js';
-import { updateBusinessDetails } from '../services/business.service.js';
+import { updateBusinessDetails, getPublicBusinessProfile } from '../services/business.service.js';
 
 /**
  * @desc    Apply for a business account
@@ -68,48 +68,89 @@ export const applyForBusinessAccountController = asyncHandler(async (req, res) =
     }
 });
 
-const toSafeJson = (data) => {
-    return JSON.parse(
-        JSON.stringify(
-            data,
-            (_, value) => (typeof value === 'bigint' ? value.toString() : value)
-        )
-    );
-};
 
 /**
  * @desc    Update business details (name, category, description, address)
  * @route   PUT /api/v1/business/update
  * @access  Private (Business only)
  */
-export const updateBusinessController = asyncHandler(async (req, res) => {
-    const businessId = Number(req.params.id); // or BigInt(req.params.id) if your route uses BigInt
-    const updateData = req.body;
+const convertBigIntDeep = (obj) => {
+    if (Array.isArray(obj)) return obj.map(convertBigIntDeep);
+    if (obj && typeof obj === 'object') {
+        return Object.fromEntries(
+            Object.entries(obj).map(([k, v]) => [
+                k,
+                typeof v === 'bigint' ? v.toString() : convertBigIntDeep(v),
+            ])
+        );
+    }
+    return obj;
+};
 
-    if (!updateData) {
+export const updateBusinessController = asyncHandler(async (req, res) => {
+    // Get authenticated user id
+    const authUserId = req.user?.id ?? req.user?.user_id ?? null;
+    if (!authUserId) return res.status(401).json({ message: 'Unauthorized: missing user' });
+
+    // business id from params
+    const businessIdParam = req.params.id;
+    if (!businessIdParam) return res.status(400).json({ message: 'Business id required in params' });
+
+    // parse update data
+    const updateData = req.body;
+    if (!updateData || Object.keys(updateData).length === 0) {
         return res.status(400).json({ message: 'Update data is required.' });
     }
 
     try {
-        const updatedBusiness = await updateBusinessDetails(businessId, updateData);
+        // call service (service will throw if forbidden/not found)
+        const updatedBusiness = await updateBusinessDetails(authUserId, businessIdParam, updateData);
 
-        // Convert BigInt fields to string
-        const safeBusiness = (function convertBigInt(obj) {
-            if (Array.isArray(obj)) return obj.map(convertBigInt);
-            if (obj && typeof obj === 'object') {
-                return Object.fromEntries(
-                    Object.entries(obj).map(([k, v]) => [
-                        k,
-                        typeof v === 'bigint' ? v.toString() : convertBigInt(v),
-                    ])
-                );
-            }
-            return obj;
-        })(updatedBusiness);
+        // Convert BigInt fields to strings for JSON
+        const safeBusiness = convertBigIntDeep(updatedBusiness);
 
         res.json({ message: 'Business updated successfully', updatedBusiness: safeBusiness });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Failed to update business.' });
+        console.error('updateBusinessController error:', err);
+
+        if (err.code === 'PROFILE_NOT_FOUND') {
+            return res.status(404).json({ message: 'Profile not found.' });
+        }
+        if (err.code === 'BUSINESS_NOT_FOUND') {
+            return res.status(404).json({ message: 'Business not found.' });
+        }
+        if (err.code === 'FORBIDDEN') {
+            return res.status(403).json({ message: 'You are not allowed to update this business.' });
+        }
+        if (err.code === 'UNAUTH') {
+            return res.status(401).json({ message: err.message });
+        }
+
+        return res.status(500).json({ message: err.message || 'Failed to update business.' });
     }
+});
+
+export const getBusinessProfileController = asyncHandler(async (req, res) => {
+    // validate id param and convert to BigInt
+    const idParam = req.params.id;
+    if (!idParam) return res.status(400).json({ message: 'Business id is required in params.' });
+
+    let businessId;
+    try {
+        businessId = BigInt(idParam);
+    } catch (e) {
+        return res.status(400).json({ message: 'Invalid business id. Must be a numeric value.' });
+    }
+
+    // fetch profile
+    const businessProfile = await getPublicBusinessProfile(businessId);
+
+    if (!businessProfile) {
+        return res.status(404).json({ message: 'Verified business profile not found.' });
+    }
+
+    // convert BigInt -> string recursively for safe JSON
+    const safeBusiness = convertBigIntDeep(businessProfile);
+
+    res.status(200).json(safeBusiness);
 });

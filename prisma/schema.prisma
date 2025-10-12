@@ -142,6 +142,7 @@ model Media {
 
   post_id                BigInt?
   marketplace_listing_id BigInt?
+  business_profile_id    BigInt?
 
   created_at DateTime @default(now())
   uploader   Profile  @relation(fields: [uploader_id], references: [user_id], onDelete: Cascade)
@@ -151,6 +152,7 @@ model Media {
 
   deal_id BigInt?
   deal    Deal?   @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+  business_profile    BusinessProfile? @relation(fields: [business_profile_id], references: [id], onDelete: Cascade)
 
   @@map("media")
   @@schema("public")
@@ -238,11 +240,11 @@ model BusinessProfile {
   status        String   @default("pending") // 'pending', 'verified', 'rejected'
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
-
   // Relation back to the main profile
   profile Profile  @relation(fields: [profile_id], references: [id], onDelete: Cascade)
   // A business can have many deals
   deals   Deal[]
+  media Media[]
   // A business is located at a specific address
   address Address?
 

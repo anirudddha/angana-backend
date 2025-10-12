@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
-import { applyForBusinessAccountController,updateBusinessController } from '../controllers/business.controller.js';
+import { applyForBusinessAccountController, updateBusinessController, getBusinessProfileController } from '../controllers/business.controller.js';
 // TODO: Add Zod validation schema for the request body
 
 const router = Router();
@@ -13,5 +13,8 @@ router.post('/apply', applyForBusinessAccountController);
 router.put('/:id', updateBusinessController);    // <-- update business by id (owner only)
 // optionally support PATCH too
 router.patch('/:id', updateBusinessController);
+
+router.get('/:id', getBusinessProfileController);
+
 
 export default router;

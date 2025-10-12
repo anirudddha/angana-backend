@@ -101,8 +101,6 @@ export const createListing = async (sellerId, listingData) => {
   return result;
 };
 
-
-
 // In src/services/marketplace.service.js
 export const searchListings = async (filters) => {
   const { q, category, lat, lon, radiusMeters = 5000 } = filters;
@@ -165,8 +163,6 @@ export const searchListings = async (filters) => {
   }).filter(Boolean);
 };
 
-
-
 export const getListingById = async (id) => {
   const listingId = typeof id === 'string' ? BigInt(id) : id;
 
@@ -174,7 +170,7 @@ export const getListingById = async (id) => {
   const rows = await prisma.$queryRawUnsafe(
     `
     SELECT
-      id,
+      id, 
       seller_id,
       neighborhood_id,
       title,
@@ -208,7 +204,6 @@ export const getListingById = async (id) => {
     }),
     prisma.profile.findUnique({
       where: { user_id: listing.seller_id },
-      select: { user_id: true, full_name: true, avatar_url: true },
     })
   ]);
 

@@ -38,6 +38,9 @@ model Profile {
 
   business_recommendations BusinessRecommendation[] @relation("ReviewerRecommendations")
 
+  babysitter_profile              BabysitterProfile?
+  given_babysitter_recommendations BabysitterRecommendation[] @relation("ReviewerRecommendations")
+
   @@map("profiles")
   @@schema("public")
 }
@@ -383,5 +386,36 @@ model Pet {
   media Media[]
 
   @@map("pets")
+  @@schema("public")
+}
+
+model BabysitterProfile {
+  id               BigInt      @id @default(autoincrement())
+  profile_id       String      @unique @db.Uuid // One-to-one link to the user's main profile
+  bio              String      @db.Text
+  experience_years Int?
+  rate_per_hour    Float?
+  certifications   String[]    // Array of strings, e.g., ["CPR Certified", "First Aid"]
+  status           String      @default("active") // 'active', 'inactive'
+
+  profile         Profile                  @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  recommendations BabysitterRecommendation[]
+
+  @@map("babysitter_profiles")
+  @@schema("public")
+}
+
+model BabysitterRecommendation {
+  id                    BigInt            @id @default(autoincrement())
+  reviewer_id           String            @db.Uuid
+  babysitter_profile_id BigInt
+  comment               String            @db.Text
+  created_at            DateTime          @default(now())
+
+  reviewer         Profile           @relation("ReviewerRecommendations", fields: [reviewer_id], references: [id], onDelete: Cascade)
+  babysitter_profile BabysitterProfile @relation(fields: [babysitter_profile_id], references: [id], onDelete: Cascade)
+
+  @@unique([reviewer_id, babysitter_profile_id]) // A user can only recommend a sitter once
+  @@map("babysitter_recommendations")
   @@schema("public")
 }

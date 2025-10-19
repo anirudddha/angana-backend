@@ -14,6 +14,7 @@ import dealRoutes from './deals.routes.js';       // <-- ADD THIS
 import eventRoutes from './events.routes.js'; // <-- ADD THIS
 import serviceRoutes from './services.routes.js';
 import petRoutes from './pets.routes.js';
+import babysitterRoutes from './babysitters.routes.js'; // <-- ADD THIS
 
 const router = Router();
 
@@ -36,5 +37,6 @@ router.use('/events', eventRoutes);
 router.use('/services', serviceRoutes);
 
 router.use('/pets', petRoutes);
+router.use('/babysitters', babysitterRoutes); 
 
 export default router;

@@ -30,6 +30,9 @@ model Profile {
   likes                  PostLike[]
   posts                  Post[]
 
+  created_events Event[]
+  event_rsvps    EventRsvp[]
+
   business_profile BusinessProfile?
 
   @@map("profiles")
@@ -67,6 +70,8 @@ model Neighborhood {
   memberships          NeighborhoodMembership[]
   posts                Post[]
   deals                Deal[]
+
+  events Event[]
 
   @@index([boundaries], map: "idx_neighborhoods_boundaries", type: Gist)
   @@map("neighborhoods")
@@ -153,6 +158,9 @@ model Media {
   deal_id BigInt?
   deal    Deal?   @relation(fields: [deal_id], references: [id], onDelete: Cascade)
   business_profile    BusinessProfile? @relation(fields: [business_profile_id], references: [id], onDelete: Cascade)
+
+  event_id BigInt?
+  event    Event?  @relation(fields: [event_id], references: [id], onDelete: Cascade)
 
   @@map("media")
   @@schema("public")
@@ -272,5 +280,41 @@ model Deal {
   media        Media[] // Deals can have images
 
   @@map("deals")
+  @@schema("public")
+}
+
+model Event {
+  id              BigInt      @id @default(autoincrement())
+  creator_id      String      @db.Uuid
+  neighborhood_id BigInt
+  title           String
+  description     String      @db.Text
+  location_name   String      // e.g., "Central Park Pavilion"
+  location_point  Unsupported("geography(Point, 4326)")? // For map view
+  start_time      DateTime
+  end_time        DateTime?
+  organizer_type  String      @default("resident") // 'resident' or 'business'
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  creator      Profile      @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  neighborhood Neighborhood @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+  media        Media[]      // Events can have a cover image or gallery
+  rsvps        EventRsvp[]
+
+  @@map("events")
+  @@schema("public")
+}
+
+model EventRsvp {
+  user_id    String   @db.Uuid
+  event_id   BigInt
+  created_at DateTime @default(now())
+
+  user  Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event Event   @relation(fields: [event_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, event_id]) // Composite primary key prevents duplicate RSVPs
+  @@map("event_rsvps")
   @@schema("public")
 }

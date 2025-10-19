@@ -11,6 +11,7 @@ import notificationRoutes from './notifications.routes.js';
 import searchRoutes from './search.routes.js';
 import businessRoutes from './business.routes.js'; // <-- ADD THIS
 import dealRoutes from './deals.routes.js';       // <-- ADD THIS
+import eventRoutes from './events.routes.js'; // <-- ADD THIS
 
 const router = Router();
 
@@ -28,5 +29,7 @@ router.use('/search', searchRoutes);
 
 router.use('/business', businessRoutes); // <-- ADD THIS
 router.use('/deals', dealRoutes);         // <-- ADD THIS
+
+router.use('/events', eventRoutes);
 
 export default router;

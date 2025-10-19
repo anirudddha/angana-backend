@@ -13,6 +13,7 @@ import businessRoutes from './business.routes.js'; // <-- ADD THIS
 import dealRoutes from './deals.routes.js';       // <-- ADD THIS
 import eventRoutes from './events.routes.js'; // <-- ADD THIS
 import serviceRoutes from './services.routes.js';
+import petRoutes from './pets.routes.js';
 
 const router = Router();
 
@@ -33,5 +34,7 @@ router.use('/deals', dealRoutes);         // <-- ADD THIS
 
 router.use('/events', eventRoutes);
 router.use('/services', serviceRoutes);
+
+router.use('/pets', petRoutes);
 
 export default router;

@@ -12,6 +12,7 @@ import searchRoutes from './search.routes.js';
 import businessRoutes from './business.routes.js'; // <-- ADD THIS
 import dealRoutes from './deals.routes.js';       // <-- ADD THIS
 import eventRoutes from './events.routes.js'; // <-- ADD THIS
+import serviceRoutes from './services.routes.js';
 
 const router = Router();
 
@@ -31,5 +32,6 @@ router.use('/business', businessRoutes); // <-- ADD THIS
 router.use('/deals', dealRoutes);         // <-- ADD THIS
 
 router.use('/events', eventRoutes);
+router.use('/services', serviceRoutes);
 
 export default router;

@@ -1,6 +1,13 @@
 import asyncHandler from 'express-async-handler';
 import { applyForBusinessAccount } from '../services/business.service.js';
 import { updateBusinessDetails, getPublicBusinessProfile } from '../services/business.service.js';
+import { setBusinessServices } from '../services/service.service.js';
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+
+
+const serializeBigInt = (obj) =>
+    JSON.parse(JSON.stringify(obj, (_key, value) => (typeof value === 'bigint' ? value.toString() : value)));
 
 /**
  * @desc    Apply for a business account
@@ -153,4 +160,29 @@ export const getBusinessProfileController = asyncHandler(async (req, res) => {
     const safeBusiness = convertBigIntDeep(businessProfile);
 
     res.status(200).json(safeBusiness);
+});
+
+// Add this new controller function
+export const setBusinessServicesController = asyncHandler(async (req, res) => {
+    // find business profile for the authenticated user (avoid relying on req.businessProfile)
+    const business = await prisma.businessProfile.findUnique({
+        where: { profile_id: req.user.id }, // assuming req.user.id is Profile.id or req.user.user_id? adjust if necessary
+    });
+
+    if (!business) {
+        return res.status(404).json({ message: 'Business profile not found' });
+    }
+
+    const { serviceCategoryIds } = req.body;
+
+    try {
+        const updated = await setBusinessServices(business.id, serviceCategoryIds);
+        return res.status(200).json(serializeBigInt(updated));
+    } catch (err) {
+        // handle validation error from service
+        if (err && err.code === 'INVALID_CATEGORIES') {
+            return res.status(400).json({ message: err.message, invalidCategoryIds: err.invalid || [] });
+        }
+        throw err; // let error middleware handle unexpected errors
+    }
 });

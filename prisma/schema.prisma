@@ -35,6 +35,8 @@ model Profile {
 
   business_profile BusinessProfile?
 
+  business_recommendations BusinessRecommendation[] @relation("ReviewerRecommendations")
+
   @@map("profiles")
   @@schema("public")
 }
@@ -256,6 +258,9 @@ model BusinessProfile {
   // A business is located at a specific address
   address Address?
 
+  service_offerings ServiceOffering[]
+  recommendations   BusinessRecommendation[]
+
   @@map("business_profiles")
   @@schema("public")
 }
@@ -316,5 +321,45 @@ model EventRsvp {
 
   @@id([user_id, event_id]) // Composite primary key prevents duplicate RSVPs
   @@map("event_rsvps")
+  @@schema("public")
+}
+
+model ServiceCategory {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  // A category can be offered by many businesses
+  offerings ServiceOffering[]
+
+  @@map("service_categories")
+  @@schema("public")
+}
+
+model ServiceOffering {
+  id                  Int      @id @default(autoincrement())
+  business_profile_id BigInt
+  service_category_id Int
+
+  business_profile  BusinessProfile @relation(fields: [business_profile_id], references: [id], onDelete: Cascade)
+  service_category ServiceCategory @relation(fields: [service_category_id], references: [id], onDelete: Cascade)
+
+  @@unique([business_profile_id, service_category_id]) // A business can only offer a category once
+  @@map("service_offerings")
+  @@schema("public")
+}
+
+model BusinessRecommendation {
+  id                  Int      @id @default(autoincrement())
+  reviewer_id         String   @db.Uuid
+  business_profile_id BigInt
+  rating              Int
+  comment             String   @db.Text
+  created_at          DateTime @default(now())
+
+  reviewer         Profile         @relation("ReviewerRecommendations", fields: [reviewer_id], references: [id], onDelete: Cascade)
+  business_profile BusinessProfile @relation(fields: [business_profile_id], references: [id], onDelete: Cascade)
+
+  @@unique([reviewer_id, business_profile_id])
+  @@map("business_recommendations")
   @@schema("public")
 }

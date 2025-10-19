@@ -1,10 +1,11 @@
+// prisma/seed.js
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
     console.log('Start seeding...');
 
-    // Find the first user (assuming you created one in Sprint 1)
+    // Find the first user (assuming you created one)
     const user = await prisma.profile.findFirst();
     if (!user) {
         console.error('Could not find a user to seed data for. Please sign in at least once.');
@@ -32,14 +33,13 @@ async function main() {
             neighborhood_id: neighborhood.id,
         },
     });
-
     console.log(`${user.full_name} is now a member of ${neighborhood.name}`);
 
     // 3. Create a Post in that neighborhood by the user
     const post1 = await prisma.post.create({
         data: {
             content: 'Hello neighbors! Just moved in. Looking for recommendations for the best local coffee shop.',
-            author_id: user.user_id,   // ✅ FIXED
+            author_id: user.user_id,
             neighborhood_id: neighborhood.id,
         },
     });
@@ -49,7 +49,7 @@ async function main() {
     const post2 = await prisma.post.create({
         data: {
             content: 'Has anyone seen a lost black cat with a blue collar? Responds to "Shadow".',
-            author_id: user.user_id,   // ✅ FIXED
+            author_id: user.user_id,
             neighborhood_id: neighborhood.id,
         },
     });
@@ -59,11 +59,31 @@ async function main() {
     await prisma.postComment.create({
         data: {
             content: "Welcome to the neighborhood! 'The Daily Grind' on Main St is fantastic.",
-            author_id: user.user_id,   // ✅ FIXED
+            author_id: user.user_id,
             post_id: post1.id,
         },
     });
     console.log('Added a comment.');
+
+    // 6. Seed service categories
+    const categories = [
+        'Plumbing',
+        'Landscaping',
+        'Tutoring',
+        'Pet Sitting',
+        'House Cleaning',
+        'Electrician',
+        'Painting'
+    ];
+
+    for (const name of categories) {
+        await prisma.serviceCategory.upsert({
+            where: { name },
+            update: {},
+            create: { name },
+        });
+        console.log(`Seeded category: ${name}`);
+    }
 
     console.log('Seeding finished.');
 }

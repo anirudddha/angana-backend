@@ -68,7 +68,7 @@ export const getBabysitterDetails = async (babysitterProfileId) => {
   return prisma.babysitterProfile.findUnique({
     where: { id: babysitterProfileId },
     include: {
-      profile: { select: { id: true, full_name: true, avatar_url: true, created_at: true } },
+      profile: { select: { id: true, user_id: true, full_name: true, avatar_url: true, created_at: true } },
       recommendations: {
         include: {
           reviewer: { select: { id: true, full_name: true, avatar_url: true } },
@@ -86,11 +86,11 @@ export const getBabysitterDetails = async (babysitterProfileId) => {
  * @param {string} comment
  */
 export const createBabysitterRecommendation = async (reviewerId, babysitterProfileId, comment) => {
-    return prisma.babysitterRecommendation.create({
-        data: {
-            reviewer_id: reviewerId,
-            babysitter_profile_id: babysitterProfileId,
-            comment: comment,
-        }
-    });
+  return prisma.babysitterRecommendation.create({
+    data: {
+      reviewer_id: reviewerId,
+      babysitter_profile_id: babysitterProfileId,
+      comment: comment,
+    }
+  });
 };

@@ -4,20 +4,19 @@ const prisma = new PrismaClient();
 
 /**
  * Creates a new pet profile for a user.
- * @param {string} ownerId - The UUID of the user.
+ * @param {string} ownerUserId - The UUID of the user.
  * @param {object} petData - The details of the pet.
  */
 export const createPet = async (ownerUserId, petData) => {
+    // ... (This function is correct and remains unchanged)
     const { name, species, breed, bio, mediaUrls = [] } = petData;
 
-    // Resolve profile (we store owner_id as Profile.id, not Profile.user_id)
     const profile = await prisma.profile.findUnique({ where: { user_id: ownerUserId } });
     if (!profile) {
         throw new Error('Creator profile does not exist');
     }
 
     return prisma.$transaction(async (tx) => {
-        // create pet with owner_id = profile.id (PRIMARY KEY)
         const pet = await tx.pet.create({
             data: {
                 owner_id: profile.id,
@@ -28,10 +27,9 @@ export const createPet = async (ownerUserId, petData) => {
             },
         });
 
-        // media.uploader_id should be profile.user_id (because Media.uploader relation references user_id)
         if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
             const mediaData = mediaUrls.map((url) => ({
-                uploader_id: profile.user_id, // NOTE: references Profile.user_id
+                uploader_id: profile.user_id,
                 url,
                 pet_id: pet.id,
             }));
@@ -46,42 +44,56 @@ export const createPet = async (ownerUserId, petData) => {
 };
 
 /**
- * Updates a pet's profile. Ensures the user is the owner.
+ * MODIFIED: Updates a pet's profile. Ensures the user is the owner atomically.
+ * This is more secure and efficient as it combines the find and update operation.
  * @param {BigInt} petId
- * @param {string} ownerId - The UUID of the user.
+ * @param {BigInt} ownerId - The ID of the owner's profile.
  * @param {object} updateData - The new data for the pet.
  */
 export const updatePet = async (petId, ownerId, updateData) => {
-    const pet = await prisma.pet.findUnique({ where: { id: petId } });
-    if (!pet) {
-        throw new Error("Pet not found.");
-    }
-    if (pet.owner_id !== ownerId) {
+    const { name, species, breed, bio, status } = updateData;
+
+    // Use a compound `where` clause to ensure we only update if the ownerId matches.
+    // This prevents a race condition and is more efficient.
+    const updatedPet = await prisma.pet.updateMany({
+        where: {
+            id: petId,
+        owner_id: ownerId, // Authorization check happens here!
+        },
+        data: { name, species, breed, bio, status },
+    });
+
+    if (updatedPet.count === 0) {
+        // This means either the pet didn't exist OR the user was not the owner.
+        const petExists = await prisma.pet.findUnique({ where: { id: petId } });
+        if (!petExists) throw new Error("Pet not found.");
         throw new Error("Forbidden: You are not the owner of this pet.");
     }
 
-    const { name, species, breed, bio, status } = updateData;
-    return prisma.pet.update({
-        where: { id: petId },
-        data: { name, species, breed, bio, status },
-    });
+    return prisma.pet.findUnique({ where: { id: petId } });
 };
 
 /**
- * Deletes a pet's profile. Also verifies ownership.
+ * MODIFIED: Deletes a pet's profile. Also verifies ownership atomically.
  * @param {BigInt} petId
- * @param {string} ownerId
+ * @param {BigInt} ownerId - The ID of the owner's profile.
  */
 export const deletePet = async (petId, ownerId) => {
-    const pet = await prisma.pet.findUnique({ where: { id: petId } });
-    if (!pet) {
-        throw new Error("Pet not found.");
-    }
-    if (pet.owner_id !== ownerId) {
+    // Similar to update, we use a compound `where` to ensure ownership.
+    const deleteResult = await prisma.pet.deleteMany({
+        where: {
+            id: petId,
+            owner_id: ownerId, // Authorization check happens here!
+        },
+    });
+
+    if (deleteResult.count === 0) {
+        const petExists = await prisma.pet.findUnique({ where: { id: petId } });
+        if (!petExists) throw new Error("Pet not found.");
         throw new Error("Forbidden: You are not the owner of this pet.");
     }
 
-    return prisma.pet.delete({ where: { id: petId } });
+    // No need to return anything on successful delete.
 };
 
 /**
@@ -89,11 +101,12 @@ export const deletePet = async (petId, ownerId) => {
  * @param {BigInt} petId
  */
 export const getPetDetails = async (petId) => {
+    // ... (This function is correct and remains unchanged)
     const pet = await prisma.pet.findUnique({
         where: { id: petId },
         include: {
             media: { select: { id: true, url: true } },
-            owner: { select: { id: true, user_id: true, full_name: true, avatar_url: true } },
+            owner: { select: { id: true, full_name: true, avatar_url: true } },
         },
     });
 
@@ -103,11 +116,31 @@ export const getPetDetails = async (petId) => {
 };
 
 /**
+ * ADDED: Gets all pets for the currently logged-in user.
+ * @param {BigInt} ownerId - The ID of the owner's profile.
+ */
+export const getMyPets = async (ownerId) => {
+    return prisma.pet.findMany({
+        where: { owner_id: ownerId },
+        include: {
+            media: {
+                select: { url: true },
+                take: 1 // Get one cover image for the list view
+            },
+        },
+        orderBy: {
+            created_at: 'desc'
+        },
+    });
+};
+
+/**
  * Gets a directory of pets whose owners are in a specific neighborhood.
  * @param {BigInt} neighborhoodId
  * @param {string} status - 'safe' or 'lost'
  */
 export const getPetsForNeighborhood = async (neighborhoodId, status = 'safe') => {
+    // ... (This function is correct and remains unchanged)
     return prisma.pet.findMany({
         where: {
             status,

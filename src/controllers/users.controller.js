@@ -3,8 +3,6 @@ import { getUserProfile, updateUserProfile, getPublicUserProfile } from '../serv
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
-
-
 export const getCurrentUserController = asyncHandler(async (req, res) => {
   const authUser = req.user;
 
@@ -42,20 +40,28 @@ export const getCurrentUserController = asyncHandler(async (req, res) => {
   });
 });
 
-
 export const updateCurrentUserController = asyncHandler(async (req, res) => {
-  const updatedProfile = await updateUserProfile(req.user.id, req.body);
-  res.status(200).json(updatedProfile);
+  try {
+    const updatedProfile = await updateUserProfile(req.user.id, req.body);
+    res.status(200).json(updatedProfile);
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    res.status(500).json({ message: 'Failed to update user profile', error: error.message });
+  }
 });
 
 export const getUserProfileController = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const userProfile = await getPublicUserProfile(id);
+  try {
+    const { id } = req.params;
+    const userProfile = await getPublicUserProfile(id);
 
-  if (!userProfile) {
-    // If no user is found, throw a 404 error which our global handler will catch.
-    throw new ApiError(404, 'User profile not found');
+    if (!userProfile) {
+      return res.status(404).json({ message: 'User profile not found' });
+    }
+
+    res.status(200).json(userProfile);
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ message: 'Failed to fetch user profile', error: error.message });
   }
-
-  res.status(200).json(userProfile);
 });

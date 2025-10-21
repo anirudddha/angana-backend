@@ -243,3 +243,128 @@ export const getRecommendationsForBusiness = async (businessId) => {
         orderBy: { created_at: 'desc' }
     });
 };
+
+export const getBusinessServices = async (businessId) => {
+    return prisma.serviceOffering.findMany({
+        where: { business_profile_id: businessId },
+        include: {
+            service_category: true,
+        },
+        orderBy: { id: 'asc' },
+    });
+};
+/**
+ * Create a new service offering for a business.
+ * data: { service_category_id, price?, description?, active? }
+ */
+export const createBusinessService = async (businessId, data) => {
+    if (!businessId) {
+        const err = new Error('businessId required');
+        err.code = 'BUSINESS_ID_REQUIRED';
+        throw err;
+    }
+
+    const scId = data.service_category_id ?? data.serviceCategoryIds ?? data.category_id;
+    if (!scId) {
+        const err = new Error('service_category_id is required');
+        err.code = 'MISSING_CATEGORY';
+        throw err;
+    }
+
+    // validate category exists (ServiceCategory.id is Int)
+    const cat = await prisma.serviceCategory.findUnique({ where: { id: Number(scId) } });
+    if (!cat) {
+        const err = new Error(`Invalid service_category_id: ${scId}`);
+        err.code = 'INVALID_CATEGORY';
+        err.invalid = [scId];
+        throw err;
+    }
+
+    try {
+        return await prisma.serviceOffering.create({
+            data: {
+                business_profile_id: businessId,
+                service_category_id: Number(scId),
+            },
+        });
+    } catch (e) {
+        // Handle unique constraint (business_profile_id + service_category_id)
+        // Prisma unique constraint error code is P2002
+        if (e && e.code === 'P2002') {
+            const err = new Error('This service category is already offered by the business.');
+            err.statusCode = 409;
+            throw err;
+        }
+        throw e;
+    }
+};
+
+/**
+ * Update a service offering. Ensures the offering belongs to the business.
+ * data: allowed same as create (price, description, active, service_category_id)
+ */
+export const updateBusinessService = async (businessId, serviceId, data) => {
+    const offering = await prisma.serviceOffering.findUnique({ where: { id: Number(serviceId) } });
+    if (!offering) {
+        const err = new Error('Service offering not found');
+        err.statusCode = 404;
+        throw err;
+    }
+    if (String(offering.business_profile_id) !== String(businessId)) {
+        const err = new Error('Forbidden: offering does not belong to this business');
+        err.statusCode = 403;
+        throw err;
+    }
+
+    const updateData = {};
+    if (data.serviceCategoryId !== undefined) {
+        const newCatId = Number(data.serviceCategoryId);
+        const cat = await prisma.serviceCategory.findUnique({ where: { id: newCatId } });
+        if (!cat) {
+            const err = new Error(`Invalid serviceCategoryId: ${data.serviceCategoryId}`);
+            err.code = 'INVALID_CATEGORY';
+            err.invalid = [data.serviceCategoryId];
+            throw err;
+        }
+        updateData.serviceCategoryId = newCatId;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+        const err = new Error('No updatable fields provided');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    try {
+        return await prisma.serviceOffering.update({
+            where: { id: Number(serviceId) },
+            data: updateData,
+        });
+    } catch (e) {
+        if (e && e.code === 'P2002') {
+            const err = new Error('Another offering with that category already exists for this business.');
+            err.statusCode = 409;
+            throw err;
+        }
+        throw e;
+    }
+};
+
+/**
+ * Delete a service offering. Ensures the offering belongs to the business.
+ */
+export const deleteBusinessService = async (businessId, serviceId) => {
+    const offering = await prisma.serviceOffering.findUnique({ where: { id: Number(serviceId) } });
+    if (!offering) {
+        const err = new Error('Service offering not found');
+        err.statusCode = 404;
+        throw err;
+    }
+    if (String(offering.business_profile_id) !== String(businessId)) {
+        const err = new Error('Forbidden: offering does not belong to this business');
+        err.statusCode = 403;
+        throw err;
+    }
+    await prisma.serviceOffering.delete({ where: { id: Number(serviceId) } });
+    return { success: true };
+};

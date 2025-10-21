@@ -66,3 +66,86 @@ export const getRecommendationsController = asyncHandler(async (req, res) => {
   const recommendations = await serviceService.getRecommendationsForBusiness(businessId);
   res.status(200).json(serializeBigInt(recommendations));
 });
+
+export const getBusinessServicesController = asyncHandler(async (req, res) => {
+  let businessId;
+  try {
+    businessId = BigInt(req.params.businessId);
+  } catch (e) {
+    return res.status(400).json({ message: 'Invalid businessId' });
+  }
+
+  const services = await serviceService.getBusinessServices(businessId);
+  return res.status(200).json(serializeBigInt(services));
+});
+
+export const getMyServicesController = asyncHandler(async (req, res) => {
+  const business = req.businessProfile;
+  const services = await serviceService.getBusinessServices(business.id);
+  return res.status(200).json(serializeBigInt(services));
+});
+
+export const createBusinessServiceController = asyncHandler(async (req, res) => {
+  let businessId;
+  try {
+    businessId = BigInt(req.params.businessId);
+  } catch (e) {
+    return res.status(400).json({ message: 'Invalid businessId' });
+  }
+
+  if (!req.businessProfile || String(req.businessProfile.id) !== String(businessId)) {
+    return res.status(403).json({ message: 'Forbidden: You do not own this business' });
+  }
+
+  // expected body: { service_category_id }
+  const payload = req.body;
+  try {
+    const created = await serviceService.createBusinessService(businessId, payload);
+    return res.status(201).json(serializeBigInt(created));
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({ message: err.message, details: err.invalid || undefined });
+  }
+});
+
+export const updateBusinessServiceController = asyncHandler(async (req, res) => {
+  let businessId, serviceId;
+  try {
+    businessId = BigInt(req.params.businessId);
+    serviceId = BigInt(req.params.serviceId);
+  } catch (e) {
+    return res.status(400).json({ message: 'Invalid businessId or serviceId' });
+  }
+
+  if (!req.businessProfile || String(req.businessProfile.id) !== String(businessId)) {
+    return res.status(403).json({ message: 'Forbidden: You do not own this business' });
+  }
+
+  const payload = req.body; // e.g., { service_category_id: 7 }
+  try {
+    const updated = await serviceService.updateBusinessService(businessId, serviceId, payload);
+    return res.status(200).json(serializeBigInt(updated));
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({ message: err.message, details: err.invalid || undefined });
+  }
+});
+
+export const deleteBusinessServiceController = asyncHandler(async (req, res) => {
+  let businessId, serviceId;
+  try {
+    businessId = BigInt(req.params.businessId);
+    serviceId = BigInt(req.params.serviceId);
+  } catch (e) {
+    return res.status(400).json({ message: 'Invalid businessId or serviceId' });
+  }
+  
+  if (!req.businessProfile || String(req.businessProfile.id) !== String(businessId)) {
+    return res.status(403).json({ message: 'Forbidden: You do not own this business' });
+  }
+
+  try {
+    await serviceService.deleteBusinessService(businessId, serviceId);
+    return res.status(204).send();
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({ message: err.message, details: err.invalid || undefined });
+  }
+});

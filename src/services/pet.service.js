@@ -93,7 +93,7 @@ export const getPetDetails = async (petId) => {
         where: { id: petId },
         include: {
             media: { select: { id: true, url: true } },
-            owner: { select: { id: true, full_name: true, avatar_url: true } },
+            owner: { select: { id: true, user_id: true, full_name: true, avatar_url: true } },
         },
     });
 

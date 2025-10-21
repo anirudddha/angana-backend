@@ -304,12 +304,15 @@ export const createBusinessService = async (businessId, data) => {
  * data: allowed same as create (price, description, active, service_category_id)
  */
 export const updateBusinessService = async (businessId, serviceId, data) => {
-    const offering = await prisma.serviceOffering.findUnique({ where: { id: Number(serviceId) } });
+    const offering = await prisma.serviceOffering.findUnique({
+        where: { id: Number(serviceId) },
+    });
     if (!offering) {
         const err = new Error('Service offering not found');
         err.statusCode = 404;
         throw err;
     }
+
     if (String(offering.business_profile_id) !== String(businessId)) {
         const err = new Error('Forbidden: offering does not belong to this business');
         err.statusCode = 403;
@@ -326,7 +329,7 @@ export const updateBusinessService = async (businessId, serviceId, data) => {
             err.invalid = [data.serviceCategoryId];
             throw err;
         }
-        updateData.serviceCategoryId = newCatId;
+        updateData.service_category_id = newCatId; // ✅ FIXED FIELD NAME
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -349,6 +352,7 @@ export const updateBusinessService = async (businessId, serviceId, data) => {
         throw e;
     }
 };
+
 
 /**
  * Delete a service offering. Ensures the offering belongs to the business.

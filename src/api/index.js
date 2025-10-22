@@ -15,6 +15,8 @@ import eventRoutes from './events.routes.js'; // <-- ADD THIS
 import serviceRoutes from './services.routes.js';
 import petRoutes from './pets.routes.js';
 import babysitterRoutes from './babysitters.routes.js'; // <-- ADD THIS
+import groupRoutes from './groups.routes.js';           // <-- ADD THIS
+import groupPostRoutes from './groupPosts.routes.js'; // <-- ADD THIS
 
 const router = Router();
 
@@ -38,5 +40,8 @@ router.use('/services', serviceRoutes);
 
 router.use('/pets', petRoutes);
 router.use('/babysitters', babysitterRoutes); 
+
+router.use('/groups', groupRoutes);           // <-- ADD THIS
+router.use('/group-posts', groupPostRoutes); // <-- ADD THIS
 
 export default router;

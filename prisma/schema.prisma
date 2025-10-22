@@ -31,14 +31,20 @@ model Profile {
   posts                  Post[]
   pets                   Pet[]
 
-  created_events Event[]
-  event_rsvps    EventRsvp[]
+  created_groups         Group[]
+  group_memberships      GroupMembership[]
+  group_posts            GroupPost[]
+  group_post_likes       GroupPostLike[]
+  group_post_comments    GroupPostComment[]
 
-  business_profile BusinessProfile?
+  created_events         Event[]
+  event_rsvps            EventRsvp[]
+
+  business_profile       BusinessProfile?
 
   business_recommendations BusinessRecommendation[] @relation("ReviewerRecommendations")
 
-  babysitter_profile              BabysitterProfile?
+  babysitter_profile     BabysitterProfile?
   given_babysitter_recommendations BabysitterRecommendation[] @relation("ReviewerRecommendations")
 
   @@map("profiles")
@@ -77,7 +83,8 @@ model Neighborhood {
   posts                Post[]
   deals                Deal[]
 
-  events Event[]
+  events               Event[]
+  groups               Group[]
 
   @@index([boundaries], map: "idx_neighborhoods_boundaries", type: Gist)
   @@map("neighborhoods")
@@ -170,6 +177,12 @@ model Media {
 
   pet_id BigInt?
   pet    Pet?    @relation(fields: [pet_id], references: [id], onDelete: Cascade)
+
+  group_id       BigInt?
+  group_post_id  BigInt?
+
+  group       Group?     @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  group_post  GroupPost? @relation(fields: [group_post_id], references: [id], onDelete: Cascade)
 
   @@map("media")
   @@schema("public")
@@ -417,5 +430,91 @@ model BabysitterRecommendation {
 
   @@unique([reviewer_id, babysitter_profile_id]) // A user can only recommend a sitter once
   @@map("babysitter_recommendations")
+  @@schema("public")
+}
+
+model Group {
+  id              BigInt      @id @default(autoincrement())
+  creator_id      String      @db.Uuid
+  neighborhood_id BigInt
+  name            String
+  description     String      @db.Text
+  privacy_level   String      @default("public") // 'public', 'private'
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  creator      Profile           @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  neighborhood Neighborhood      @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
+  media        Media[]           // For cover image, etc.
+  memberships  GroupMembership[]
+  posts        GroupPost[]
+
+  @@map("groups")
+  @@schema("public")
+}
+
+// NEW MODEL: GroupMembership (Join Table)
+model GroupMembership {
+  user_id    String   @db.Uuid
+  group_id   BigInt
+  role       String   @default("member") // 'member', 'moderator', 'admin'
+  status     String   @default("active") // 'active' for public, 'pending' for private join requests
+  joined_at  DateTime @default(now())
+
+  user  Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  group Group   @relation(fields: [group_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, group_id])
+  @@map("group_memberships")
+  @@schema("public")
+}
+
+// --- SEPARATE POSTING SYSTEM FOR GROUPS ---
+
+// NEW MODEL: GroupPost
+model GroupPost {
+  id         BigInt            @id @default(autoincrement())
+  author_id  String            @db.Uuid
+  group_id   BigInt
+  content    String            @db.Text
+  is_pinned  Boolean           @default(false)
+  created_at DateTime          @default(now())
+
+  author   Profile           @relation(fields: [author_id], references: [id], onDelete: Cascade)
+  group    Group             @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  media    Media[]
+  likes    GroupPostLike[]
+  comments GroupPostComment[]
+
+  @@map("group_posts")
+  @@schema("public")
+}
+
+// NEW MODEL: GroupPostLike
+model GroupPostLike {
+  user_id      String    @db.Uuid
+  group_post_id BigInt
+  created_at   DateTime  @default(now())
+
+  user Profile   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  post GroupPost @relation(fields: [group_post_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, group_post_id])
+  @@map("group_post_likes")
+  @@schema("public")
+}
+
+// NEW MODEL: GroupPostComment
+model GroupPostComment {
+  id            BigInt    @id @default(autoincrement())
+  group_post_id BigInt
+  author_id     String    @db.Uuid
+  content       String    @db.Text
+  created_at    DateTime  @default(now())
+
+  post   GroupPost @relation(fields: [group_post_id], references: [id], onDelete: Cascade)
+  author Profile   @relation(fields: [author_id], references: [id], onDelete: Cascade)
+
+  @@map("group_post_comments")
   @@schema("public")
 }

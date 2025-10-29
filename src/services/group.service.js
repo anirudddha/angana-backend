@@ -207,3 +207,33 @@ export const manageMember = async (groupId, targetUserId, action, role = 'member
     });
   }
 };
+
+export const getGroupMembers = async (groupId) => {
+  const members = await prisma.groupMembership.findMany({
+    where: {
+      group_id: groupId,
+      status: 'active', // We only want to show active members
+    },
+    include: {
+      // Include the related user (Profile) details for each membership
+      user: {
+        select: {
+          id: true,         // The user's Profile ID
+          full_name: true,
+          avatar_url: true,
+        },
+      },
+    },
+    orderBy: [
+      // Show admins and moderators at the top of the list
+      {
+        role: 'asc', // 'admin' comes before 'member' and 'moderator'
+      },
+      // Then sort by when they joined
+      {
+        joined_at: 'asc',
+      },
+    ],
+  });
+  return members;
+};

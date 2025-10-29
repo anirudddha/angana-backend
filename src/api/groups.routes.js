@@ -11,6 +11,7 @@ import {
   leaveGroupController,
   approveRequestController,
   manageMemberController,
+  getGroupMembersController,
 } from '../controllers/groups.controller.js';
 
 import {
@@ -44,5 +45,7 @@ router.delete('/:id/members/:userId', checkGroupAdmin, manageMemberController); 
 router.route('/:groupId/posts')
   .post(checkGroupMembership, createGroupPostController) // Use :groupId here
   .get(checkGroupMembership, getGroupFeedController);    // Use :groupId here
+
+router.route('/:id/members').get(checkGroupMembership, getGroupMembersController);
 
 export default router;

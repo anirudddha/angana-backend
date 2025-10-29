@@ -91,3 +91,11 @@ export const manageMemberController = asyncHandler(async (req, res) => {
 
   return res.status(400).json({ message: 'Invalid action' });
 });
+
+export const getGroupMembersController = asyncHandler(async (req, res) => {
+  const groupId = BigInt(req.params.id);
+  const members = await groupService.getGroupMembers(groupId);
+  
+  // The service returns an array, which the helper can serialize correctly
+  res.status(200).json(serializeBigInt(members));
+});

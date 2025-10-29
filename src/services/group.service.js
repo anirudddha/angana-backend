@@ -92,17 +92,42 @@ export const getGroupDetails = async (groupId, currentUserId) => {
 /**
  * Fetches all public groups within a given neighborhood.
  */
-export const findGroupsInNeighborhood = async (neighborhoodId) => {
-  return prisma.group.findMany({
+export const findGroupsInNeighborhood = async (neighborhoodId, currentUserId) => {
+  // Step 1: Fetch all public groups and conditionally include the current user's membership.
+  const groups = await prisma.group.findMany({
     where: {
       neighborhood_id: neighborhoodId,
       privacy_level: 'public'
     },
     include: {
       media: { select: { url: true }, take: 1 },
-      _count: { select: { memberships: { where: { status: 'active' } } } }
+      _count: { select: { memberships: { where: { status: 'active' } } } },
+      // This is the key addition: we fetch the membership record ONLY for the current user.
+      memberships: {
+        where: {
+          user_id: currentUserId,
+        },
+        select: {
+          status: true, // We only need their status ('active', 'pending', etc.)
+        },
+      },
     },
     orderBy: { created_at: 'desc' }
+  });
+
+  // Step 2: Transform the data to create the simple `membership_status` field the frontend expects.
+  return groups.map(group => {
+    // The 'memberships' array will have one item if the user is a member, or be empty if not.
+    const membership = group.memberships[0]; 
+    
+    // Create the new property. It will be 'active', 'pending', or null.
+    const membership_status = membership ? membership.status : null;
+
+    // Remove the temporary 'memberships' array from the final object for a clean API response.
+    delete group.memberships; 
+
+    // Return the original group data merged with the new membership_status field.
+    return { ...group, membership_status };
   });
 };
 

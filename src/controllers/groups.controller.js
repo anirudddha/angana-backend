@@ -30,7 +30,14 @@ export const getGroupDetailsController = asyncHandler(async (req, res) => {
 
 export const findGroupsInNeighborhoodController = asyncHandler(async (req, res) => {
   const neighborhoodId = BigInt(req.params.id);
-  const groups = await groupService.findGroupsInNeighborhood(neighborhoodId);
+  
+  // Get the current user's ID from the authenticated request object.
+  // Your `authenticate` middleware provides this.
+  const currentUserId = req.user.id; 
+
+  // Pass the user's ID into the service function.
+  const groups = await groupService.findGroupsInNeighborhood(neighborhoodId, currentUserId);
+  
   // Apply the helper here (it works on arrays of objects too)
   res.status(200).json(serializeBigInt(groups));
 });

@@ -89,3 +89,8 @@ export const deleteEventController = asyncHandler(async (req, res) => {
     throw error;
   }
 });
+
+export const getMyRsvpsController = asyncHandler(async (req, res) => {
+  const events = await eventService.getEventsUserRsvpdTo(req.user.user_id);
+  res.status(200).json(serializeBigInt(events));
+});

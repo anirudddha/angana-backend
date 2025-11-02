@@ -77,10 +77,6 @@ export const createEvent = async (creatorId, eventData) => {
   });
 };
 
-
-
-
-
 /**
  * Fetches upcoming events for a given neighborhood.
  * @param {BigInt} neighborhoodId
@@ -117,10 +113,23 @@ export const getEventDetails = async (eventId, currentUserId) => {
 
   if (!event) return null;
 
-  // Check if the current user has RSVP'd
-  const userRsvp = await prisma.eventRsvp.findUnique({
-    where: { user_id_event_id: { user_id: currentUserId, event_id: eventId } },
+  // --- THIS IS THE FIX ---
+  // First, find the user's profile using their UUID to get the numeric profile ID.
+  const profile = await prisma.profile.findUnique({
+    where: { user_id: currentUserId },
+    select: { id: true }, // We only need the ID
   });
+
+  // If the user has no profile, they can't have an RSVP.
+  if (!profile) {
+    return { ...event, has_rsvpd: false };
+  }
+
+  // Now, check for the RSVP using the correct numeric profile ID.
+  const userRsvp = await prisma.eventRsvp.findUnique({
+    where: { user_id_event_id: { user_id: profile.id, event_id: eventId } },
+  });
+  // --- END OF FIX ---
 
   return { ...event, has_rsvpd: !!userRsvp };
 };
@@ -258,5 +267,35 @@ export const getEventsByCreator = async (userId) => {
       _count: { select: { rsvps: true } },
     },
     orderBy: { start_time: 'desc' }, // Show most recent first
+  });
+};
+
+export const getEventsUserRsvpdTo = async (userId) => {
+  const profile = await prisma.profile.findUnique({
+    where: { user_id: userId },
+    select: { id: true },
+  });
+
+  if (!profile) {
+    // If there's no profile, they have no RSVPs.
+    return [];
+  }
+
+  // Find all events where the 'rsvps' relation contains an entry for this user's profile ID.
+  return prisma.event.findMany({
+    where: {
+      start_time: { gte: new Date() }, // Only show upcoming events
+      rsvps: {
+        some: {
+          user_id: profile.id,
+        },
+      },
+    },
+    include: {
+      creator: { select: { id: true, full_name: true, avatar_url: true } },
+      media: { select: { url: true }, take: 1 },
+      _count: { select: { rsvps: true } },
+    },
+    orderBy: { start_time: 'asc' },
   });
 };

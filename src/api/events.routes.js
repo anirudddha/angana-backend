@@ -9,6 +9,7 @@ import {
   getMyEventsController,
   updateEventController,
   deleteEventController,
+  getMyRsvpsController,
 } from '../controllers/events.controller.js';
 
 const router = Router();
@@ -18,7 +19,11 @@ router.use(authenticate); // Protect all event routes
 router.route('/')
   .post(createEventController);
 
-  router.route('/my-events')
+// Get events the current user has registered for
+router.route('/my-rsvps')
+  .get(getMyRsvpsController);
+
+router.route('/my-events')
   .get(getMyEventsController);
 
 router.route('/neighborhood/:id')

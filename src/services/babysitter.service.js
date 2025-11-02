@@ -94,3 +94,20 @@ export const createBabysitterRecommendation = async (reviewerId, babysitterProfi
     }
   });
 };
+
+export const getBabysitterProfileByUserId = async (userId) => {
+  return prisma.babysitterProfile.findUnique({
+    // We are searching using the 'profile_id', which is the foreign key
+    // linking back to the main User/Profile table.
+    where: { profile_id: userId },
+    include: {
+      profile: { select: { id: true, user_id: true, full_name: true, avatar_url: true } },
+      recommendations: {
+        include: {
+          reviewer: { select: { id: true, full_name: true, avatar_url: true } },
+        },
+        orderBy: { created_at: 'desc' },
+      },
+    },
+  });
+};

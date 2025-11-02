@@ -92,3 +92,19 @@ export const createRecommendationController = asyncHandler(async (req, res) => {
   const recommendation = await babysitterService.createBabysitterRecommendation(reviewerId, sitterProfileId, comment);
   return res.status(201).json(serializeBigInt(recommendation));
 });
+
+export const getMyBabysitterProfileController = asyncHandler(async (req, res) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) return res.status(401).json({ message: 'Unauthorized' });
+
+  // This calls the new service function we added previously
+  const profile = await babysitterService.getBabysitterProfileByUserId(authUserId);
+
+  if (!profile) {
+    // This is a critical step. A 404 response tells the frontend that
+    // the user is not a sitter, which is a valid and expected state.
+    return res.status(404).json({ message: 'Babysitter profile not found for this user.' });
+  }
+
+  return res.status(200).json(serializeBigInt(profile));
+});

@@ -6,6 +6,7 @@ import {
   getNeighborhoodBabysittersController,
   getBabysitterDetailsController,
   createRecommendationController,
+  getMyBabysitterProfileController,
 } from '../controllers/babysitters.controller.js';
 
 const router = Router();
@@ -14,8 +15,8 @@ router.use(authenticate); // Protect all routes
 // For a user to manage their OWN babysitter profile
 router.route('/me')
   .post(setMyBabysitterProfileController) // Create or update
-  .delete(removeMyBabysitterProfileController); // Opt-out
-
+  .delete(removeMyBabysitterProfileController) // Opt-out
+  .get(getMyBabysitterProfileController);
 // For parents to find babysitters
 router.get('/neighborhood/:id', getNeighborhoodBabysittersController);
 

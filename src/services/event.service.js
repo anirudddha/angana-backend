@@ -86,18 +86,18 @@ export const createEvent = async (creatorId, eventData) => {
  * @param {BigInt} neighborhoodId
  */
 export const getEventsForNeighborhood = async (neighborhoodId) => {
-    return prisma.event.findMany({
-        where: {
-            neighborhood_id: neighborhoodId,
-            start_time: { gte: new Date() }, // Only show future events
-        },
-        include: {
-            creator: { select: { id: true, full_name: true, avatar_url: true } },
-            media: { select: { url: true }, take: 1 }, // Just get the cover image
-            _count: { select: { rsvps: true } }, // Get the number of people attending
-        },
-        orderBy: { start_time: 'asc' },
-    });
+  return prisma.event.findMany({
+    where: {
+      neighborhood_id: neighborhoodId,
+      start_time: { gte: new Date() }, // Only show future events
+    },
+    include: {
+      creator: { select: { id: true, full_name: true, avatar_url: true } },
+      media: { select: { url: true }, take: 1 }, // Just get the cover image
+      _count: { select: { rsvps: true } }, // Get the number of people attending
+    },
+    orderBy: { start_time: 'asc' },
+  });
 };
 
 /**
@@ -106,23 +106,23 @@ export const getEventsForNeighborhood = async (neighborhoodId) => {
  * @param {string} currentUserId
  */
 export const getEventDetails = async (eventId, currentUserId) => {
-    const event = await prisma.event.findUnique({
-        where: { id: eventId },
-        include: {
-            creator: { select: { id: true, full_name: true, avatar_url: true } },
-            media: { select: { id: true, url: true } },
-            _count: { select: { rsvps: true } },
-        },
-    });
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    include: {
+      creator: { select: { id: true, full_name: true, avatar_url: true } },
+      media: { select: { id: true, url: true } },
+      _count: { select: { rsvps: true } },
+    },
+  });
 
-    if (!event) return null;
+  if (!event) return null;
 
-    // Check if the current user has RSVP'd
-    const userRsvp = await prisma.eventRsvp.findUnique({
-        where: { user_id_event_id: { user_id: currentUserId, event_id: eventId } },
-    });
+  // Check if the current user has RSVP'd
+  const userRsvp = await prisma.eventRsvp.findUnique({
+    where: { user_id_event_id: { user_id: currentUserId, event_id: eventId } },
+  });
 
-    return { ...event, has_rsvpd: !!userRsvp };
+  return { ...event, has_rsvpd: !!userRsvp };
 };
 
 /**
@@ -131,43 +131,132 @@ export const getEventDetails = async (eventId, currentUserId) => {
  * @param {BigInt} eventId
  */
 export const rsvpToEvent = async (userId, eventId) => {
-    // userId here is the authenticated user's Profile.user_id (string)
-    const profile = await prisma.profile.findUnique({
-      where: { user_id: userId },
-    });
-    if (!profile) {
-      throw new Error('Creator profile does not exist');
-    }
-  
-    // Optional but recommended: ensure event exists so we can give a friendly error
-    const event = await prisma.event.findUnique({ where: { id: eventId } });
-    if (!event) {
-      throw new Error('Event not found');
-    }
-  
-    // Use profile.id for the relation (Profile.id is referenced by EventRsvp.user)
-    return prisma.eventRsvp.upsert({
+  // userId here is the authenticated user's Profile.user_id (string)
+  const profile = await prisma.profile.findUnique({
+    where: { user_id: userId },
+  });
+  if (!profile) {
+    throw new Error('Creator profile does not exist');
+  }
+
+  // Optional but recommended: ensure event exists so we can give a friendly error
+  const event = await prisma.event.findUnique({ where: { id: eventId } });
+  if (!event) {
+    throw new Error('Event not found');
+  }
+
+  // Use profile.id for the relation (Profile.id is referenced by EventRsvp.user)
+  return prisma.eventRsvp.upsert({
+    where: { user_id_event_id: { user_id: profile.id, event_id: eventId } },
+    update: {},
+    create: { user_id: profile.id, event_id: eventId },
+  });
+};
+
+export const cancelRsvp = async (userId, eventId) => {
+  const profile = await prisma.profile.findUnique({
+    where: { user_id: userId },
+  });
+  if (!profile) {
+    throw new Error('Creator profile does not exist');
+  }
+
+  try {
+    return await prisma.eventRsvp.delete({
       where: { user_id_event_id: { user_id: profile.id, event_id: eventId } },
-      update: {},
-      create: { user_id: profile.id, event_id: eventId },
     });
-  };
-  
-  export const cancelRsvp = async (userId, eventId) => {
-    const profile = await prisma.profile.findUnique({
-      where: { user_id: userId },
-    });
-    if (!profile) {
-      throw new Error('Creator profile does not exist');
-    }
-  
-    try {
-      return await prisma.eventRsvp.delete({
-        where: { user_id_event_id: { user_id: profile.id, event_id: eventId } },
-      });
-    } catch (error) {
-      // If no RSVP found, ignore (same final state)
-      if (error.code === 'P2025') return;
-      throw error;
-    }
-  };
+  } catch (error) {
+    // If no RSVP found, ignore (same final state)
+    if (error.code === 'P2025') return;
+    throw error;
+  }
+};
+
+export const updateEvent = async (eventId, userId, eventData) => {
+  // Find the profile of the user making the request
+  const profile = await prisma.profile.findUnique({
+    where: { user_id: userId },
+  });
+
+  if (!profile) {
+    throw new Error('User profile not found');
+  }
+
+  // Find the event to ensure it exists and the user is the owner
+  const existingEvent = await prisma.event.findUnique({
+    where: { id: eventId },
+  });
+
+  if (!existingEvent) {
+    throw new Error('Event not found'); // Or handle as 404 in controller
+  }
+
+  // Authorization check: only the creator can update the event
+  if (existingEvent.creator_id !== profile.id) {
+    throw new Error('User is not authorized to update this event'); // Handle as 403 in controller
+  }
+
+  const { title, description, location_name, startTime, endTime } = eventData;
+
+  // Prepare data for update (only update fields that are provided)
+  const dataToUpdate = {};
+  if (title) dataToUpdate.title = title;
+  if (description) dataToUpdate.description = description;
+  if (location_name) dataToUpdate.location_name = location_name;
+  if (startTime) dataToUpdate.start_time = new Date(startTime);
+  if (endTime) dataToUpdate.end_time = new Date(endTime);
+
+  return prisma.event.update({
+    where: { id: eventId },
+    data: dataToUpdate,
+  });
+};
+
+/**
+ * Deletes an event.
+ * Ensures the user making the request is the creator of the event.
+ * @param {BigInt} eventId - The ID of the event to delete.
+ * @param {string} userId - The authenticated user's ID (Profile.user_id).
+ */
+export const deleteEvent = async (eventId, userId) => {
+  const profile = await prisma.profile.findUnique({
+    where: { user_id: userId },
+  });
+  if (!profile) throw new Error('User profile not found');
+
+  const existingEvent = await prisma.event.findUnique({
+    where: { id: eventId },
+  });
+  if (!existingEvent) throw new Error('Event not found');
+
+  // Authorization check
+  if (existingEvent.creator_id !== profile.id) {
+    throw new Error('User is not authorized to delete this event');
+  }
+
+  // Prisma will automatically handle cascading deletes for RSVPs and Media if your schema is set up for it.
+  return prisma.event.delete({
+    where: { id: eventId },
+  });
+};
+
+/**
+ * Fetches all events created by a specific user.
+ * @param {string} userId - The creator's user ID (Profile.user_id).
+ */
+export const getEventsByCreator = async (userId) => {
+  const profile = await prisma.profile.findUnique({
+    where: { user_id: userId },
+  });
+  if (!profile) throw new Error('User profile not found');
+
+  return prisma.event.findMany({
+    where: {
+      creator_id: profile.id, // Find events by the Profile.id
+    },
+    include: {
+      _count: { select: { rsvps: true } },
+    },
+    orderBy: { start_time: 'desc' }, // Show most recent first
+  });
+};

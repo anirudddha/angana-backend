@@ -283,12 +283,13 @@ export const getEventsUserRsvpdTo = async (userId) => {
   });
 
   if (!profile) {
-    return [];
+    // Return the new data structure even if empty
+    return { upcoming: [], past: [] };
   }
 
-  return prisma.event.findMany({
+  // 1. Remove the start_time filter to get ALL events the user RSVP'd to.
+  const allRsvpdEvents = await prisma.event.findMany({
     where: {
-      start_time: { gte: new Date() },
       rsvps: {
         some: {
           user_id: profile.id,
@@ -300,6 +301,27 @@ export const getEventsUserRsvpdTo = async (userId) => {
       media: { select: { url: true }, take: 1 },
       _count: { select: { rsvps: true } },
     },
-    orderBy: { start_time: 'asc' },
+    // 2. Sort all events by start time, descending (most recent first).
+    // This is useful for both upcoming and past lists.
+    orderBy: { start_time: 'desc' },
   });
+
+  // 3. Separate the events into 'upcoming' and 'past' arrays.
+  const now = new Date();
+  const upcoming = [];
+  const past = [];
+
+  for (const event of allRsvpdEvents) {
+    if (event.start_time >= now) {
+      upcoming.push(event);
+    } else {
+      past.push(event);
+    }
+  }
+
+  // Upcoming events should be sorted ascending (soonest first)
+  upcoming.reverse();
+
+  // 4. Return the structured object.
+  return { upcoming, past };
 };

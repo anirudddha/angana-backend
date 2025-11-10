@@ -212,3 +212,257 @@ export const getListingById = async (id) => {
 
   return listing;
 };
+
+// Get all listings created by a specific user (my listings/my offers)
+export const getMyListings = async (userId) => {
+  const listings = await prisma.marketplaceListing.findMany({
+    where: { seller_id: userId },
+    include: {
+      media: { select: { id: true, url: true } },
+      seller: { select: { user_id: true, full_name: true } },
+      neighborhood: { select: { id: true, name: true } }
+    },
+    orderBy: { created_at: 'desc' }
+  });
+
+  // Convert BigInt fields to strings
+  return listings.map(listing => ({
+    ...listing,
+    id: listing.id.toString(),
+    neighborhood_id: listing.neighborhood_id.toString(),
+    media: listing.media.map(m => ({
+      ...m,
+      id: m.id.toString()
+    }))
+  }));
+};
+
+// Update a listing (seller only)
+export const updateListing = async (listingId, sellerId, updateData) => {
+  const listingIdBigInt = typeof listingId === 'string' ? BigInt(listingId) : listingId;
+
+  // Verify ownership using updateMany (atomic check)
+  const updatePayload = {};
+  if (updateData.title !== undefined) updatePayload.title = updateData.title;
+  if (updateData.description !== undefined) updatePayload.description = updateData.description;
+  if (updateData.price !== undefined) updatePayload.price = updateData.price;
+  if (updateData.category !== undefined) updatePayload.category = updateData.category;
+  if (updateData.status !== undefined) updatePayload.status = updateData.status;
+
+  return await prisma.$transaction(async (tx) => {
+    // Get user's address location if we need to update location
+    if (updateData.updateLocation) {
+      const locRows = await tx.$queryRawUnsafe(
+        `SELECT ST_AsText(location) AS wkt FROM addresses WHERE user_id = $1::uuid LIMIT 1;`,
+        sellerId
+      );
+      if (locRows && locRows.length > 0 && locRows[0].wkt) {
+        const pointWkt = locRows[0].wkt;
+        // Use raw query for location update since Prisma doesn't support geography directly
+        await tx.$queryRawUnsafe(
+          `UPDATE marketplace_listings 
+           SET location = ST_GeomFromText($1, 4326)
+           WHERE id = $2::bigint AND seller_id = $3::uuid;`,
+          pointWkt,
+          listingIdBigInt,
+          sellerId
+        );
+      }
+    }
+    // Update the listing (only if there are fields to update)
+    if (Object.keys(updatePayload).length > 0) {
+      const updateResult = await tx.marketplaceListing.updateMany({
+        where: {
+          id: listingIdBigInt,
+          seller_id: sellerId
+        },
+        data: updatePayload
+      });
+
+      if (updateResult.count === 0) {
+        // Check if listing exists
+        const exists = await tx.marketplaceListing.findUnique({
+          where: { id: listingIdBigInt }
+        });
+        if (!exists) {
+          throw new Error('Listing not found');
+        }
+        throw new Error('Not authorized to update this listing');
+      }
+    }
+
+    // Handle media updates if provided
+    if (Array.isArray(updateData.mediaUrls)) {
+      // Delete existing media
+      await tx.media.deleteMany({
+        where: { marketplace_listing_id: listingIdBigInt }
+      });
+
+      // Create new media if provided
+      if (updateData.mediaUrls.length > 0) {
+        const mediaData = updateData.mediaUrls.map((url) => ({
+          uploader_id: sellerId,
+          url,
+          marketplace_listing_id: listingIdBigInt,
+        }));
+        await tx.media.createMany({ data: mediaData });
+      }
+    }
+
+    // Fetch updated listing with media
+    const listingWithMediaRows = await tx.$queryRawUnsafe(
+      `
+      SELECT
+        l.id,
+        l.seller_id,
+        l.neighborhood_id,
+        l.title,
+        l.description,
+        l.price,
+        l.category,
+        l.status,
+        ST_AsText(l.location) AS location,
+        l.created_at,
+        COALESCE(
+          json_agg(json_build_object('id', m.id, 'url', m.url) ORDER BY m.id) 
+            FILTER (WHERE m.id IS NOT NULL),
+          '[]'
+        ) AS media
+      FROM marketplace_listings l
+      LEFT JOIN media m ON m.marketplace_listing_id = l.id
+      WHERE l.id = $1::bigint
+      GROUP BY l.id;
+      `,
+      listingIdBigInt
+    );
+
+    if (!listingWithMediaRows || listingWithMediaRows.length === 0) {
+      throw new Error('Failed to fetch updated listing');
+    }
+
+    return listingWithMediaRows[0];
+  });
+};
+
+// Delete a listing (seller only)
+export const deleteListing = async (listingId, sellerId) => {
+  const listingIdBigInt = typeof listingId === 'string' ? BigInt(listingId) : listingId;
+
+  // Verify ownership
+  const existingListing = await prisma.marketplaceListing.findUnique({
+    where: { id: listingIdBigInt }
+  });
+
+  if (!existingListing) {
+    throw new Error('Listing not found');
+  }
+
+  if (existingListing.seller_id !== sellerId) {
+    throw new Error('Not authorized to delete this listing');
+  }
+
+  // Delete media first (cascade should handle this, but being explicit)
+  await prisma.media.deleteMany({
+    where: { marketplace_listing_id: listingIdBigInt }
+  });
+
+  // Delete the listing
+  await prisma.marketplaceListing.delete({
+    where: { id: listingIdBigInt }
+  });
+
+  return { message: 'Listing deleted successfully' };
+};
+
+// Admin: Get all listings with optional filters
+export const getAllListings = async (filters = {}) => {
+  const { status, category, sellerId, neighborhoodId, limit = 100, offset = 0 } = filters;
+
+  const where = {};
+  if (status) where.status = status;
+  if (category) where.category = category;
+  if (sellerId) where.seller_id = sellerId;
+  if (neighborhoodId) {
+    where.neighborhood_id = typeof neighborhoodId === 'string' ? BigInt(neighborhoodId) : neighborhoodId;
+  }
+
+  const listings = await prisma.marketplaceListing.findMany({
+    where,
+    include: {
+      media: { select: { id: true, url: true } },
+      seller: { select: { user_id: true, full_name: true } },
+      neighborhood: { select: { id: true, name: true } }
+    },
+    orderBy: { created_at: 'desc' },
+    take: parseInt(limit),
+    skip: parseInt(offset)
+  });
+
+  // Convert BigInt fields to strings
+  return listings.map(listing => ({
+    ...listing,
+    id: listing.id.toString(),
+    neighborhood_id: listing.neighborhood_id.toString(),
+    media: listing.media.map(m => ({
+      ...m,
+      id: m.id.toString()
+    }))
+  }));
+};
+
+// Admin: Update listing status (can update any listing)
+export const updateListingStatus = async (listingId, status) => {
+  const listingIdBigInt = typeof listingId === 'string' ? BigInt(listingId) : listingId;
+
+  const existingListing = await prisma.marketplaceListing.findUnique({
+    where: { id: listingIdBigInt }
+  });
+
+  if (!existingListing) {
+    throw new Error('Listing not found');
+  }
+
+  const updated = await prisma.marketplaceListing.update({
+    where: { id: listingIdBigInt },
+    data: { status },
+    include: {
+      media: { select: { id: true, url: true } },
+      seller: { select: { user_id: true, full_name: true } }
+    }
+  });
+
+  return {
+    ...updated,
+    id: updated.id.toString(),
+    neighborhood_id: updated.neighborhood_id.toString(),
+    media: updated.media.map(m => ({
+      ...m,
+      id: m.id.toString()
+    }))
+  };
+};
+
+// Admin: Delete any listing
+export const deleteListingAdmin = async (listingId) => {
+  const listingIdBigInt = typeof listingId === 'string' ? BigInt(listingId) : listingId;
+
+  const existingListing = await prisma.marketplaceListing.findUnique({
+    where: { id: listingIdBigInt }
+  });
+
+  if (!existingListing) {
+    throw new Error('Listing not found');
+  }
+
+  // Delete media first
+  await prisma.media.deleteMany({
+    where: { marketplace_listing_id: listingIdBigInt }
+  });
+
+  // Delete the listing
+  await prisma.marketplaceListing.delete({
+    where: { id: listingIdBigInt }
+  });
+
+  return { message: 'Listing deleted successfully by admin' };
+};

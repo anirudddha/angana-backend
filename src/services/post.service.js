@@ -1,79 +1,98 @@
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
-export const createPost = async (authorId, { content, mediaUrls = [], categoryIds = [], pollQuestion, pollOptions, isUrgent = false }) => {
-    // Use a transaction
-    return prisma.$transaction(async (tx) => {
-  
-      // 1. Fetch the user's neighborhood membership
-      const membership = await tx.neighborhoodMembership.findFirst({
-        where: { user_id: authorId },
-        select: { neighborhood_id: true },
-      });
-  
-      if (!membership) {
-        throw new Error("User does not belong to any neighborhood.");
-      }
-  
-      // 2. Create the post
-      const post = await tx.post.create({
+export const createPost = async (
+  authorId,
+  {
+    content,
+    mediaUrls = [],
+    categoryIds = [],
+    pollQuestion,
+    pollOptions,
+    isUrgent = false,
+  }
+) => {
+  if (!authorId) throw new Error("authorId is required");
+
+  // Normalize category ids to numbers (Prisma Category.id is Int)
+  const categoryConnect = Array.isArray(categoryIds)
+    ? categoryIds.map((id) => ({ id: Number(id) }))
+    : [];
+
+  // 1) Find membership BEFORE the transaction (fast read)
+  const membership = await prisma.neighborhoodMembership.findFirst({
+    where: { user_id: authorId },
+    select: { neighborhood_id: true },
+  });
+
+  if (!membership) {
+    throw new Error("User does not belong to any neighborhood.");
+  }
+
+  // 2) Do writes in a short transaction: create post, poll (if any), media (if any)
+  const createdPostId = await prisma.$transaction(async (tx) => {
+    const post = await tx.post.create({
+      data: {
+        content,
+        author_id: authorId,
+        neighborhood_id: membership.neighborhood_id,
+        is_urgent: isUrgent,
+        // connect categories only if provided
+        ...(categoryConnect.length > 0 && {
+          categories: { connect: categoryConnect },
+        }),
+      },
+    });
+
+    // create poll (if provided)
+    if (pollQuestion && Array.isArray(pollOptions) && pollOptions.length > 1) {
+      await tx.poll.create({
         data: {
-          content,
-          author_id: authorId,
-          neighborhood_id: membership.neighborhood_id,
-          is_urgent: isUrgent, // Add is_urgent flag
-          categories: {
-            connect: categoryIds.map(id => ({ id })),
+          post_id: post.id,
+          question: pollQuestion,
+          options: {
+            create: pollOptions.map((text) => ({ text })),
           },
         },
       });
+    }
 
-      // 3. Create poll if pollQuestion and pollOptions are provided
-      if (pollQuestion && pollOptions && pollOptions.length > 1) {
-        const poll = await tx.poll.create({
-          data: {
-            post_id: post.id,
-            question: pollQuestion,
-            options: {
-              create: pollOptions.map(optionText => ({ text: optionText })),
+    // insert media (createMany is fastest) — ensure url and uploader
+    if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
+      const mediaData = mediaUrls.map((url) => ({
+        uploader_id: authorId,
+        post_id: post.id,
+        url,
+      }));
+      // createMany doesn't return rows; that's fine
+      await tx.media.createMany({ data: mediaData });
+    }
+
+    // RETURN the created post id only (keep transaction short)
+    return post.id;
+  });
+
+  // 3) Fetch the post with relations OUTSIDE the transaction (no timeout issues)
+  const postWithRelations = await prisma.post.findUnique({
+    where: { id: createdPostId },
+    include: {
+      media: { select: { id: true, url: true } },
+      categories: true,
+      poll: {
+        include: {
+          options: {
+            include: {
+              _count: { select: { votes: true } },
             },
           },
-        });
-      }
-  
-      // 4. Insert media if provided
-      if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
-        const mediaData = mediaUrls.map((url) => ({
-          uploader_id: authorId,
-          post_id: post.id,
-          url,
-        }));
-  
-        await tx.media.createMany({ data: mediaData });
-      }
-  
-      // 5. Fetch and return the post with media, categories, and poll
-      const postWithRelations = await tx.post.findUnique({
-        where: { id: post.id },
-        include: { 
-          media: true, 
-          categories: true,
-          poll: {
-            include: {
-              options: {
-                include: {
-                  _count: { select: { votes: true } }
-                }
-              }
-            }
-          }
         },
-      });
-  
-      return postWithRelations;
-    });
-  };
-  
+      },
+    },
+  });
+
+  return postWithRelations;
+};
+
 
 // In src/services/post.service.js
 export const getPostDetails = async (postId, currentUserId) => {

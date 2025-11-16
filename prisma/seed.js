@@ -14,14 +14,18 @@ async function main() {
     console.log(`Found user: ${user.full_name}`);
 
     // 1. Create a Neighborhood
-    const neighborhood = await prisma.neighborhood.upsert({
-        where: { id: 1 },
-        update: {},
-        create: {
-            name: 'Sunnyvale Springs',
-            description: 'A friendly community of neighbors.',
-        },
+    let neighborhood = await prisma.neighborhood.findUnique({
+        where: { name: 'Sunnyvale Springs' },
     });
+
+    if (!neighborhood) {
+        neighborhood = await prisma.neighborhood.create({
+            data: {
+                name: 'Sunnyvale Springs',
+                description: 'A friendly community of neighbors.',
+            },
+        });
+    }
     console.log(`Created neighborhood: ${neighborhood.name}`);
 
     // 2. Make the user a member of this neighborhood
@@ -83,6 +87,42 @@ async function main() {
             create: { name },
         });
         console.log(`Seeded category: ${name}`);
+    }
+
+    // 7. Seed report reasons
+    const reportReasons = [
+        { reason: 'Spam', description: 'This is spam or a scam.' },
+        { reason: 'Hate Speech', description: 'This is harassment or hate speech.' },
+        { reason: 'Misinformation', description: 'This contains false information.' },
+        { reason: 'Inappropriate Content', description: 'This is not appropriate for the neighborhood.' },
+        { reason: 'Other', description: 'The reason is not listed.' },
+    ];
+
+    for (const reasonData of reportReasons) {
+        await prisma.reportReason.upsert({
+            where: { reason: reasonData.reason },
+            update: {},
+            create: reasonData,
+        });
+        console.log(`Seeded report reason: ${reasonData.reason}`);
+    }
+
+    // 8. Seed notification types
+    const notificationTypes = [
+        { name: 'New Post', description: 'Notification for new posts in your neighborhood.' },
+        { name: 'New Comment on My Post', description: 'Notification when someone comments on your post.' },
+        { name: 'New Direct Message', description: 'Notification when you receive a new direct message.' },
+        { name: 'Event Reminder', description: 'Reminder for events you are attending.' },
+        { name: 'Urgent Alert', description: 'High-priority alerts from your neighborhood.' },
+    ];
+
+    for (const typeData of notificationTypes) {
+        await prisma.notificationType.upsert({
+            where: { name: typeData.name },
+            update: {},
+            create: typeData,
+        });
+        console.log(`Seeded notification type: ${typeData.name}`);
     }
 
     console.log('Seeding finished.');

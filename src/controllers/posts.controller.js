@@ -2,16 +2,25 @@ import asyncHandler from 'express-async-handler';
 import * as postService from '../services/post.service.js';
 
 export const createPostController = asyncHandler(async (req, res) => {
-    const { content, mediaUrls } = req.body;
+    const { content, mediaUrls, categoryIds, pollQuestion, pollOptions, isUrgent } = req.body;
 
-    if (!content) {
+    if (!content && !pollQuestion) { // Content or poll question is required
         res.status(400);
-        throw new Error('Content and neighborhoodId are required.');
+        throw new Error('Content or poll question is required.');
+    }
+
+    if (pollQuestion && (!pollOptions || pollOptions.length < 2)) {
+      res.status(400);
+      throw new Error('Polls must have at least two options.');
     }
 
     const post = await postService.createPost(req.user.user_id, {
         content,
         mediaUrls, // optional array of image/video URLs
+        categoryIds, // optional array of category IDs
+        pollQuestion,
+        pollOptions,
+        isUrgent,
     });
 
     // Convert BigInt fields to string before sending JSON

@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider          = "postgresql"
-  url               = env("DATABASE_URL")
+  provider  =         "postgresql"
+  url       =         env("DATABASE_URL")
+  directUrl =         env("DIRECT_URL")
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
   schemas           = ["public"]
 }
@@ -17,6 +18,7 @@ model Profile {
   bio                    String?
   avatar_url             String?
   is_onboarding_complete Boolean                   @default(false)
+  is_verified            Boolean                   @default(false) // New field
   created_at             DateTime                  @default(now()) @db.Timestamptz(3)
   updated_at             DateTime                  @updatedAt @db.Timestamptz(3)
   address                Address?                  @relation("ProfileAddress")
@@ -30,6 +32,10 @@ model Profile {
   likes                  PostLike[]
   posts                  Post[]
   pets                   Pet[]
+  reports_made             Report[]
+  reports_received         Report[] @relation("ReportedProfile")
+  poll_votes               PollVote[]
+  notification_settings    UserNotificationSetting[]
 
   created_groups         Group[]
   group_memberships      GroupMembership[]
@@ -59,6 +65,7 @@ model Address {
   city            String
   postal_code     String
   location        Unsupported("geography")
+  verification_status AddressVerificationStatus @default(UNVERIFIED) // New field
   neighborhood    Neighborhood?            @relation(fields: [neighborhood_id], references: [id])
   user            Profile                  @relation("ProfileAddress", fields: [user_id], references: [user_id], onDelete: Cascade)
 
@@ -70,9 +77,17 @@ model Address {
   @@schema("public")
 }
 
+enum AddressVerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+
+  @@schema("public")
+}
+
 model Neighborhood {
   id                   BigInt                   @id @default(autoincrement())
-  name                 String
+  name                 String                   @unique
   description          String?
   created_at           DateTime                 @default(now())
   boundaries           Unsupported("geography")
@@ -110,6 +125,7 @@ model Post {
   neighborhood_id BigInt
   content         String
   is_pinned       Boolean                  @default(false)
+  is_urgent       Boolean                  @default(false) // New field for urgent alerts
   created_at      DateTime                 @default(now()) @db.Timestamptz(3)
   content_tsv     Unsupported("tsvector")?
   comments        PostComment[]
@@ -117,6 +133,9 @@ model Post {
   author          Profile                  @relation(fields: [author_id], references: [user_id], onDelete: Cascade)
   neighborhood    Neighborhood             @relation(fields: [neighborhood_id], references: [id], onDelete: Cascade)
   media           Media[]
+  categories      Category[]               @relation("CategoryToPost")
+  reports         Report[]
+  poll            Poll?
 
   @@index([neighborhood_id, created_at(sort: Desc)])
   @@index([content_tsv], map: "idx_posts_content_tsv", type: Gin)
@@ -147,8 +166,20 @@ model PostComment {
   parent_comment    PostComment?  @relation("Replies", fields: [parent_comment_id], references: [id], onDelete: Cascade)
   replies           PostComment[] @relation("Replies")
   post              Post          @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  reports           Report[]
 
   @@map("post_comments")
+  @@schema("public")
+}
+
+model Category {
+  id    Int      @id @default(autoincrement())
+  name  String   @unique
+  icon  String?
+  color String?
+  posts Post[]   @relation("CategoryToPost")
+
+  @@map("categories")
   @@schema("public")
 }
 
@@ -485,6 +516,7 @@ model GroupPost {
   media    Media[]
   likes    GroupPostLike[]
   comments GroupPostComment[]
+  reports  Report[]
 
   @@map("group_posts")
   @@schema("public")
@@ -516,5 +548,100 @@ model GroupPostComment {
   author Profile   @relation(fields: [author_id], references: [id], onDelete: Cascade)
 
   @@map("group_post_comments")
+  @@schema("public")
+}
+
+model ReportReason {
+  id          Int      @id @default(autoincrement())
+  reason      String   @unique
+  description String?
+  reports     Report[]
+
+  @@map("report_reasons")
+  @@schema("public")
+}
+
+model Report {
+  id              BigInt    @id @default(autoincrement())
+  reporter_id     String    @db.Uuid
+  reason_id       Int
+  comment         String?   @db.Text
+  status          String    @default("pending") // pending, reviewed, dismissed, action_taken
+  created_at      DateTime  @default(now())
+
+  // Polymorphic relations
+  post_id         BigInt?
+  post_comment_id BigInt?
+  group_post_id   BigInt?
+  profile_id      String?   @db.Uuid // The user_id of the reported profile
+
+  reporter        Profile      @relation(fields: [reporter_id], references: [user_id], onDelete: Cascade)
+  reason          ReportReason @relation(fields: [reason_id], references: [id])
+  post            Post?        @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  post_comment    PostComment? @relation(fields: [post_comment_id], references: [id], onDelete: Cascade)
+  group_post      GroupPost?   @relation(fields: [group_post_id], references: [id], onDelete: Cascade)
+  reported_profile Profile?    @relation("ReportedProfile", fields: [profile_id], references: [user_id], onDelete: Cascade)
+
+  @@map("reports")
+  @@schema("public")
+}
+
+model Poll {
+  id          BigInt       @id @default(autoincrement())
+  post_id     BigInt       @unique // One-to-one relation with Post
+  question    String
+  created_at  DateTime     @default(now())
+  post        Post         @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  options     PollOption[]
+
+  @@map("polls")
+  @@schema("public")
+}
+
+model PollOption {
+  id        BigInt     @id @default(autoincrement())
+  poll_id   BigInt
+  text      String
+  votes     PollVote[]
+  poll      Poll       @relation(fields: [poll_id], references: [id], onDelete: Cascade)
+
+  @@map("poll_options")
+  @@schema("public")
+}
+
+model PollVote {
+  user_id       String     @db.Uuid
+  poll_option_id BigInt
+  voted_at      DateTime   @default(now())
+  user          Profile    @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  option        PollOption @relation(fields: [poll_option_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, poll_option_id]) // A user can only vote once per option
+  @@map("poll_votes")
+  @@schema("public")
+}
+
+model NotificationType {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique // e.g., "New Post", "New Comment", "New Message"
+  description String?
+  settings    UserNotificationSetting[]
+
+  @@map("notification_types")
+  @@schema("public")
+}
+
+model UserNotificationSetting {
+  user_id             String   @db.Uuid
+  notification_type_id Int
+  enable_push         Boolean  @default(true)
+  enable_email        Boolean  @default(false)
+  enable_digest       Boolean  @default(false) // For email digests
+
+  user              Profile          @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  notification_type NotificationType @relation(fields: [notification_type_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, notification_type_id])
+  @@map("user_notification_settings")
   @@schema("public")
 }

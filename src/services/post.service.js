@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
-export const createPost = async (authorId, { content, mediaUrls = [] }) => {
+export const createPost = async (authorId, { content, mediaUrls = [], categoryIds = [], pollQuestion, pollOptions, isUrgent = false }) => {
     // Use a transaction
     return prisma.$transaction(async (tx) => {
   
@@ -21,10 +21,27 @@ export const createPost = async (authorId, { content, mediaUrls = [] }) => {
           content,
           author_id: authorId,
           neighborhood_id: membership.neighborhood_id,
+          is_urgent: isUrgent, // Add is_urgent flag
+          categories: {
+            connect: categoryIds.map(id => ({ id })),
+          },
         },
       });
+
+      // 3. Create poll if pollQuestion and pollOptions are provided
+      if (pollQuestion && pollOptions && pollOptions.length > 1) {
+        const poll = await tx.poll.create({
+          data: {
+            post_id: post.id,
+            question: pollQuestion,
+            options: {
+              create: pollOptions.map(optionText => ({ text: optionText })),
+            },
+          },
+        });
+      }
   
-      // 3. Insert media if provided
+      // 4. Insert media if provided
       if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
         const mediaData = mediaUrls.map((url) => ({
           uploader_id: authorId,
@@ -35,13 +52,25 @@ export const createPost = async (authorId, { content, mediaUrls = [] }) => {
         await tx.media.createMany({ data: mediaData });
       }
   
-      // 4. Fetch and return the post with media
-      const postWithMedia = await tx.post.findUnique({
+      // 5. Fetch and return the post with media, categories, and poll
+      const postWithRelations = await tx.post.findUnique({
         where: { id: post.id },
-        include: { media: true },
+        include: { 
+          media: true, 
+          categories: true,
+          poll: {
+            include: {
+              options: {
+                include: {
+                  _count: { select: { votes: true } }
+                }
+              }
+            }
+          }
+        },
       });
   
-      return postWithMedia;
+      return postWithRelations;
     });
   };
   
@@ -51,19 +80,36 @@ export const getPostDetails = async (postId, currentUserId) => {
     // 1️⃣ Fetch post with author, media, comments, and counts
     const post = await prisma.post.findUnique({
         where: { id: postId },
-        include: {
-            author: { select: { user_id: true, full_name: true, avatar_url: true } },
-            media: { select: { id: true, url: true } }, // Include media
-            comments: {
-                where: { parent_comment_id: null }, // top-level comments only
+        select: {
+          id: true,
+          author_id: true,
+          neighborhood_id: true,
+          content: true,
+          is_pinned: true,
+          is_urgent: true,
+          created_at: true,
+          author: { select: { user_id: true, full_name: true, avatar_url: true } },
+          media: { select: { id: true, url: true } },
+          categories: true,
+          poll: {
+            include: {
+              options: {
                 include: {
-                    author: { select: { full_name: true, avatar_url: true, user_id: true } },
-                    _count: { select: { replies: true } },
-                },
-                orderBy: { created_at: 'asc' },
+                  _count: { select: { votes: true } }
+                }
+              }
+            }
+          },
+          comments: {
+            where: { parent_comment_id: null },
+            include: {
+              author: { select: { full_name: true, avatar_url: true, user_id: true } },
+              _count: { select: { replies: true } },
             },
-            _count: { select: { likes: true, comments: true } }, // counts
-        },
+            orderBy: { created_at: 'asc' },
+          },
+          _count: { select: { likes: true, comments: true } },
+        }
     });
 
     if (!post) return null;

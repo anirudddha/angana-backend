@@ -41,27 +41,18 @@ export const getCurrentUserController = asyncHandler(async (req, res) => {
 });
 
 export const updateCurrentUserController = asyncHandler(async (req, res) => {
-  try {
-    const updatedProfile = await updateUserProfile(req.user.id, req.body);
-    res.status(200).json(updatedProfile);
-  } catch (error) {
-    console.error('Error updating user profile:', error);
-    res.status(500).json({ message: 'Failed to update user profile', error: error.message });
-  }
+  const updatedProfile = await updateUserProfile(req.user.id, req.body);
+  res.status(200).json(updatedProfile);
 });
 
 export const getUserProfileController = asyncHandler(async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userProfile = await getPublicUserProfile(id);
+  const { id } = req.params;
+  const userProfile = await getPublicUserProfile(id);
 
-    if (!userProfile) {
-      return res.status(404).json({ message: 'User profile not found' });
-    }
-
-    res.status(200).json(userProfile);
-  } catch (error) {
-    console.error('Error fetching user profile:', error);
-    res.status(500).json({ message: 'Failed to fetch user profile', error: error.message });
+  if (!userProfile) {
+    res.status(404);
+    throw new Error('User profile not found');
   }
+
+  res.status(200).json(userProfile);
 });

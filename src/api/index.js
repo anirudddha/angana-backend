@@ -17,6 +17,11 @@ import petRoutes from './pets.routes.js';
 import babysitterRoutes from './babysitters.routes.js'; // <-- ADD THIS
 import groupRoutes from './groups.routes.js';           // <-- ADD THIS
 import groupPostRoutes from './groupPosts.routes.js'; // <-- ADD THIS
+import categoryRoutes from './category.routes.js'; // <-- ADD THIS
+import reportRoutes from './report.routes.js'; // <-- ADD THIS
+import pollRoutes from './poll.routes.js'; // <-- ADD THIS
+import verificationRoutes from './verification.routes.js'; // <-- ADD THIS
+import notificationSettingRoutes from './notificationSetting.routes.js'; // <-- ADD THIS
 
 const router = Router();
 
@@ -43,5 +48,10 @@ router.use('/babysitters', babysitterRoutes);
 
 router.use('/groups', groupRoutes);           // <-- ADD THIS
 router.use('/group-posts', groupPostRoutes); // <-- ADD THIS
+router.use('/categories', categoryRoutes); // <-- ADD THIS
+router.use('/reports', reportRoutes); // <-- ADD THIS
+router.use('/polls', pollRoutes); // <-- ADD THIS
+router.use('/verification', verificationRoutes); // <-- ADD THIS
+router.use('/notification-settings', notificationSettingRoutes); // <-- ADD THIS
 
 export default router;

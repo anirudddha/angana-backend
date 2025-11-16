@@ -31,7 +31,9 @@ app.get('/', (req, res) => {
 app.use('/api/v1', apiRoutes);
 
 // -------------------------------
-// TODO: Add global error handler middleware
+// Global Error Handler
 // -------------------------------
+import { errorHandler } from './middleware/errorHandler.js';
+app.use(errorHandler);
 
 export { app };

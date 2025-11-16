@@ -33,7 +33,7 @@ app.use('/api/v1', apiRoutes);
 // -------------------------------
 // Global Error Handler
 // -------------------------------
-import { errorHandler } from './middleware/errorHandler.js';
-app.use(errorHandler);
+// import { errorHandler } from './middleware/errorHandler.js';
+// app.use(errorHandler);
 
 export { app };

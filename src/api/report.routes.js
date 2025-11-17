@@ -16,13 +16,14 @@ router.route('/')
   .post(authenticate, createReportController)
   .get(authenticate, getReportsController); // For moderators to view all reports
 
+  // Routes for report reasons (admin only)
+router.route('/reasons')
+  .post(authenticate, createReportReasonController)
+  .get(getReportReasonsController);
+
 router.route('/:id')
   .get(authenticate, getReportByIdController)
   .put(authenticate, updateReportStatusController); // For moderators to update report status
 
-// Routes for report reasons (admin only)
-router.route('/reasons')
-  .post(authenticate, createReportReasonController)
-  .get(getReportReasonsController);
 
 export default router;

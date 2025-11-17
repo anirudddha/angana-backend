@@ -36,6 +36,12 @@ export const getReportsController = asyncHandler(async (req, res) => {
 
 export const getReportByIdController = asyncHandler(async (req, res) => {
   const reportId = parseInt(req.params.id);
+
+  if (isNaN(reportId)) {
+    res.status(400);
+    throw new Error('Invalid report ID provided.');
+  }
+
   const report = await reportService.getReportById(reportId);
 
   if (!report) {
@@ -49,6 +55,11 @@ export const getReportByIdController = asyncHandler(async (req, res) => {
 export const updateReportStatusController = asyncHandler(async (req, res) => {
   const reportId = parseInt(req.params.id);
   const { status } = req.body;
+
+  if (isNaN(reportId)) {
+    res.status(400);
+    throw new Error('Invalid report ID provided.');
+  }
 
   if (!status) {
     res.status(400);

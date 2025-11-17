@@ -43,6 +43,16 @@ export const getUserFeed = async (userId, page = 1, limit = 10) => {
           url: true,
         },
       },
+      categories: true, // Include categories
+      poll: { // Include poll details
+        include: {
+          options: {
+            include: {
+              _count: { select: { votes: true } }
+            }
+          }
+        }
+      },
     },
     orderBy: { created_at: 'desc' },
   });

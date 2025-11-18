@@ -133,6 +133,45 @@ export const getPostDetails = async (postId, currentUserId) => {
 
     if (!post) return null;
 
+    // 👇 ADDED LOGIC FOR POLLS
+    if (post.poll) {
+      const userVote = await prisma.pollVote.findFirst({
+        where: {
+          user_id: currentUserId,
+          option: {
+            poll_id: post.poll.id,
+          },
+        },
+        select: {
+          poll_option_id: true,
+        },
+      });
+
+      let totalVotes = 0;
+      let userVoted = false;
+      let selectedOptionId = null;
+
+      post.poll.options.forEach(option => {
+        totalVotes += option._count.votes;
+        if (userVote && userVote.poll_option_id === option.id) {
+          userVoted = true;
+          selectedOptionId = option.id;
+        }
+      });
+
+      post.poll.has_voted = userVoted;
+      post.poll.selected_option_id = selectedOptionId;
+      post.poll.total_votes = totalVotes;
+
+      if (userVoted) {
+        post.poll.options.forEach(option => {
+          const voteCount = option._count.votes;
+          option.percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
+        });
+      }
+    }
+    // 👆 END OF ADDED LOGIC FOR POLLS
+
     // 2️⃣ Check if the current user has liked the post
     const userLike = await prisma.postLike.findUnique({
         where: { user_id_post_id: { user_id: currentUserId, post_id: postId } },

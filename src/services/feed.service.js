@@ -67,11 +67,57 @@ export const getUserFeed = async (userId, page = 1, limit = 10) => {
   });
 
   const likedPostIds = new Set(userLikes.map(like => like.post_id));
-  const formattedPosts = posts.map(post => ({
-    ...post,
-    has_liked: likedPostIds.has(post.id),
-    type: 'post',
-  }));
+
+  const pollIds = posts.map(p => p.poll?.id).filter(Boolean);
+  let userVotes = [];
+  if (pollIds.length > 0) {
+    userVotes = await prisma.pollVote.findMany({
+      where: {
+        user_id: userId,
+        option: {
+          poll_id: { in: pollIds },
+        },
+      },
+      select: {
+        poll_option_id: true,
+      },
+    });
+  }
+  const votedOptionIds = new Set(userVotes.map(v => v.poll_option_id));
+
+  const formattedPosts = posts.map(post => {
+    if (post.poll) {
+      let totalVotes = 0;
+      let userVoted = false;
+      let selectedOptionId = null;
+
+      post.poll.options.forEach(option => {
+        totalVotes += option._count.votes;
+        if (votedOptionIds.has(option.id)) {
+          userVoted = true;
+          selectedOptionId = option.id;
+        }
+      });
+
+      post.poll.has_voted = userVoted;
+      post.poll.selected_option_id = selectedOptionId;
+      post.poll.total_votes = totalVotes;
+
+      // If user has voted, calculate percentages
+      if (userVoted) {
+        post.poll.options.forEach(option => {
+          const voteCount = option._count.votes;
+          option.percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
+        });
+      }
+    }
+
+    return {
+      ...post,
+      has_liked: likedPostIds.has(post.id),
+      type: 'post',
+    };
+  });
 
   console.log(`📝 Posts fetched: ${formattedPosts.length}`);
 

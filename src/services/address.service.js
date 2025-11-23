@@ -158,7 +158,7 @@ export const setUserAddress = async (userId, addressData) => {
 
       // 2. Mark Onboarding Complete (Even if no neighborhood assigned, they are done setup)
       await tx.profile.update({
-        where: { id: userId },
+        where: { user_id: userId },
         data: { is_onboarding_complete: true },
       });
 

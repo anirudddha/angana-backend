@@ -193,7 +193,7 @@ export const setUserAddress = async (userId, addressData) => {
 
     // 3. Mark Onboarding Complete
     await tx.profile.update({
-      where: { id: userId },
+      where: { user_id: userId },
       data: { is_onboarding_complete: true },
     });
 

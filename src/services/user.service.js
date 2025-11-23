@@ -12,7 +12,7 @@ export const updateUserProfile = async (userId, data) => {
     data: {
       full_name,
       bio,
-      is_onboarding_complete: true, // Mark onboarding as complete after first update
+      is_onboarding_complete: false, // Mark onboarding as complete after first update
     },
   });
 };

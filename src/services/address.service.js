@@ -42,11 +42,10 @@ async function geocodeWithGoogle(fullAddress) {
 
 /**
  * setUserAddress
- * * Logic:
- * 1. Use Latitude/Longitude provided by Frontend (GPS or Google Places).
- * 2. If missing, fallback to Google Geocoding API.
- * 3. Find neighborhood using PostGIS (ST_Contains -> ST_Within -> ST_DWithin).
- * 4. Save address and membership.
+ * Logic:
+ * 1. Determine Coordinates (Frontend or Google API).
+ * 2. Find Neighborhood (PostGIS).
+ * 3. Save Address + Update Profile (is_onboarding_complete = true).
  */
 export const setUserAddress = async (userId, addressData) => {
   if (!userId) throw new Error('userId is required');
@@ -78,8 +77,9 @@ export const setUserAddress = async (userId, addressData) => {
     } catch (err) {
       console.warn('[setUserAddress] Coordinate lookup failed:', err.message);
 
-      // If we can't find location, save address WITHOUT location so user isn't blocked
+      // FALLBACK TRANSACTION: Save address without location & Complete Onboarding
       return await prisma.$transaction(async (tx) => {
+        // 1. Save Address (Partial)
         await tx.$executeRaw`
           INSERT INTO addresses (user_id, address_line_1, city, postal_code)
           VALUES (CAST(${userId} AS uuid), ${addressData.address_line_1}, ${addressData.city}, ${addressData.postal_code})
@@ -88,6 +88,13 @@ export const setUserAddress = async (userId, addressData) => {
             city = EXCLUDED.city,
             postal_code = EXCLUDED.postal_code;
         `;
+
+        // 2. Mark Onboarding Complete
+        await tx.profile.update({
+          where: { id: userId },
+          data: { is_onboarding_complete: true },
+        });
+
         return { neighborhoodId: null, latitude: null, longitude: null, assigned: false, error: 'Location not found' };
       });
     }
@@ -133,10 +140,11 @@ export const setUserAddress = async (userId, addressData) => {
   // STEP 3: Save to Database
   // ---------------------------------------------------------
 
-  // Case: No Neighborhood Found
+  // Case: No Neighborhood Found (But location is valid)
   if (!neighborhoods || neighborhoods.length === 0) {
     console.warn('[setUserAddress] No neighborhood match for:', fullAddress);
     const res = await prisma.$transaction(async (tx) => {
+      // 1. Save Address with Location
       await tx.$executeRaw`
         INSERT INTO addresses (user_id, address_line_1, city, postal_code, location)
         VALUES (CAST(${userId} AS uuid), ${addressData.address_line_1}, ${addressData.city}, ${addressData.postal_code}, ST_SetSRID(ST_MakePoint(${lonNum}, ${latNum})::geometry, 4326))
@@ -147,6 +155,13 @@ export const setUserAddress = async (userId, addressData) => {
           postal_code = EXCLUDED.postal_code,
           location = EXCLUDED.location;
       `;
+
+      // 2. Mark Onboarding Complete (Even if no neighborhood assigned, they are done setup)
+      await tx.profile.update({
+        where: { id: userId },
+        data: { is_onboarding_complete: true },
+      });
+
       return { neighborhoodId: null, latitude, longitude, assigned: false };
     });
     return res;
@@ -156,7 +171,7 @@ export const setUserAddress = async (userId, addressData) => {
   const neighborhoodId = neighborhoods[0].id;
 
   const result = await prisma.$transaction(async (tx) => {
-    // Upsert Address
+    // 1. Upsert Address
     await tx.$executeRaw`
       INSERT INTO addresses (user_id, address_line_1, city, postal_code, neighborhood_id, location)
       VALUES (CAST(${userId} AS uuid), ${addressData.address_line_1}, ${addressData.city}, ${addressData.postal_code}, ${neighborhoodId}, ST_SetSRID(ST_MakePoint(${lonNum}, ${latNum})::geometry, 4326))
@@ -169,12 +184,18 @@ export const setUserAddress = async (userId, addressData) => {
         location = EXCLUDED.location;
     `;
 
-    // Upsert Membership
+    // 2. Upsert Membership
     await tx.$executeRaw`
       INSERT INTO neighborhood_memberships (user_id, neighborhood_id)
       VALUES (CAST(${userId} AS uuid), ${neighborhoodId})
       ON CONFLICT (user_id, neighborhood_id) DO NOTHING;
     `;
+
+    // 3. Mark Onboarding Complete
+    await tx.profile.update({
+      where: { id: userId },
+      data: { is_onboarding_complete: true },
+    });
 
     return { neighborhoodId, latitude, longitude, assigned: true };
   });

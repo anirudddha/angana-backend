@@ -1,100 +1,52 @@
-// src/services/address.service.js  (updated)
 import fetch from 'node-fetch';
 import { PrismaClient } from '@prisma/client';
 import dotenv from 'dotenv';
+
 dotenv.config();
 
 const prisma = new PrismaClient();
 
-/* existing cache + rate-limit code (unchanged) */
-const geocodeCache = new Map();
-const GEOCODE_TTL_MS = 1000 * 60 * 60 * 24;
-let lastOsmRequestTimestamp = 0;
-const MIN_OSM_INTERVAL_MS = 1100;
-function sleep(ms) { return new Promise((res) => setTimeout(res, ms)); }
-function cacheGet(key) { const e = geocodeCache.get(key); if (!e) return null; if (Date.now() > e.expiresAt) { geocodeCache.delete(key); return null; } return e.value; }
-function cacheSet(key, value) { geocodeCache.set(key, { value, expiresAt: Date.now() + GEOCODE_TTL_MS }); }
+/**
+ * Helper: Geocode using Google Maps API (Server Side)
+ * Only used as a backup if the frontend fails to send coordinates.
+ */
+async function geocodeWithGoogle(fullAddress) {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
-/* keep your existing geocodeAddress but add optional GOOGLE_GEOCODING_KEY fallback (recommended).
-   For brevity, I assume your existing geocodeAddress is kept (LocationIQ -> Nominatim).
-   If you want the full improved geocodeAddress, say so and I will paste it. */
+  if (!apiKey) {
+    throw new Error('Server missing GOOGLE_MAPS_API_KEY in .env file');
+  }
 
-async function geocodeAddress(fullAddress) {
-  const normalized = fullAddress.trim().toLowerCase();
-  const cached = cacheGet(normalized);
-  if (cached) return cached;
+  console.debug('[geocodeWithGoogle] Fetching for:', fullAddress);
 
-  const locIqKey = process.env.LOCATIONIQ_KEY;
-  const userAgent = process.env.GEOCODE_USER_AGENT || 'NeighborhoodConnectApp/1.0 (contact@example.com)';
-  const referer = process.env.GEOCODE_REFERER || 'https://yourdomain.example';
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fullAddress)}&key=${encodeURIComponent(apiKey)}`;
 
-  // LocationIQ
-  if (locIqKey) {
-    try {
-      const url = `https://us1.locationiq.com/v1/search.php?key=${encodeURIComponent(locIqKey)}&q=${encodeURIComponent(fullAddress)}&format=json&limit=1`;
-      const res = await fetch(url, { headers: { 'User-Agent': userAgent, Referer: referer } });
-      if (res.ok) {
-        const json = await res.json();
-        if (Array.isArray(json) && json.length > 0) {
-          const { lat, lon } = json[0];
-          const value = { latitude: String(lat), longitude: String(lon) };
-          cacheSet(normalized, value);
-          return value;
-        }
-      } else {
-        const body = await res.text();
-        console.warn('[geocode] LocationIQ failed', res.status, body);
-      }
-    } catch (err) {
-      console.warn('[geocode] LocationIQ error', err && err.message);
+  try {
+    const res = await fetch(url);
+    const json = await res.json();
+
+    if (json.status === 'OK' && json.results && json.results.length > 0) {
+      const loc = json.results[0].geometry.location;
+      return {
+        latitude: String(loc.lat),
+        longitude: String(loc.lng)
+      };
+    } else {
+      throw new Error(`Google Geocode failed: ${json.status} - ${json.error_message || 'No results'}`);
     }
+  } catch (err) {
+    console.error('[geocodeWithGoogle] Error:', err.message);
+    throw err;
   }
-
-  // Optional: Google Geocoding fallback (if you set GOOGLE_GEOCODING_KEY)
-  const googleKey = process.env.GOOGLE_GEOCODING_KEY;
-  if (googleKey) {
-    try {
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fullAddress)}&key=${encodeURIComponent(googleKey)}`;
-      const res = await fetch(url);
-      const json = await res.json();
-      if (json && json.status === 'OK' && json.results && json.results.length > 0) {
-        const loc = json.results[0].geometry.location;
-        const value = { latitude: String(loc.lat), longitude: String(loc.lng) };
-        cacheSet(normalized, value);
-        return value;
-      } else {
-        console.warn('[geocode] Google geocode status', json && json.status, json && json.error_message);
-      }
-    } catch (err) {
-      console.warn('[geocode] Google geocode error', err && err.message);
-    }
-  }
-
-  // Fallback: Nominatim with rate-limiting
-  const now = Date.now();
-  const since = now - lastOsmRequestTimestamp;
-  if (since < MIN_OSM_INTERVAL_MS) await sleep(MIN_OSM_INTERVAL_MS - since);
-
-  const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1&addressdetails=0`;
-  const nomRes = await fetch(nomUrl, { headers: { 'User-Agent': userAgent, Referer: referer } });
-  lastOsmRequestTimestamp = Date.now();
-  if (!nomRes.ok) {
-    const body = await nomRes.text();
-    throw new Error(`Geocoding (Nominatim) failed: ${nomRes.status} ${nomRes.statusText} — ${body}`);
-  }
-  const nomJson = await nomRes.json();
-  if (!Array.isArray(nomJson) || nomJson.length === 0) {
-    // return null so caller can handle fallback instead of throwing here if you prefer
-    throw new Error('Could not geocode the provided address (no results).');
-  }
-  const { lat, lon } = nomJson[0];
-  const result = { latitude: String(lat), longitude: String(lon) };
-  cacheSet(normalized, result);
-  return result;
 }
 
 /**
- * setUserAddress: robust neighborhood assignment & graceful fallback
+ * setUserAddress
+ * * Logic:
+ * 1. Use Latitude/Longitude provided by Frontend (GPS or Google Places).
+ * 2. If missing, fallback to Google Geocoding API.
+ * 3. Find neighborhood using PostGIS (ST_Contains -> ST_Within -> ST_DWithin).
+ * 4. Save address and membership.
  */
 export const setUserAddress = async (userId, addressData) => {
   if (!userId) throw new Error('userId is required');
@@ -103,40 +55,52 @@ export const setUserAddress = async (userId, addressData) => {
   }
 
   const fullAddress = `${addressData.address_line_1}, ${addressData.city}${addressData.postal_code ? ', ' + addressData.postal_code : ''}`;
-  console.debug('[setUserAddress] address=', fullAddress);
 
-  // 1) geocode
-  let geo;
-  try {
-    geo = await geocodeAddress(fullAddress);
-  } catch (err) {
-    console.warn('[setUserAddress] geocode failed', err && err.message);
-    // *Important:* do NOT block user for geocode failure — store address and return assigned=false
-    const saved = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`
-        INSERT INTO addresses (user_id, address_line_1, city, postal_code)
-        VALUES (CAST(${userId} AS uuid), ${addressData.address_line_1}, ${addressData.city}, ${addressData.postal_code})
-        ON CONFLICT (user_id) DO UPDATE SET
-          address_line_1 = EXCLUDED.address_line_1,
-          city = EXCLUDED.city,
-          postal_code = EXCLUDED.postal_code;
-      `;
-      return { neighborhoodId: null, latitude: null, longitude: null, assigned: false, geocodeError: String(err && err.message) };
-    });
-    return saved;
+  let latitude = null;
+  let longitude = null;
+
+  // ---------------------------------------------------------
+  // STEP 1: Determine Coordinates
+  // ---------------------------------------------------------
+
+  // A. Check if Frontend sent coordinates (Preferred/Fastest)
+  if (addressData.latitude && addressData.longitude) {
+    console.debug('[setUserAddress] Using coordinates from Frontend/GPS');
+    latitude = String(addressData.latitude);
+    longitude = String(addressData.longitude);
+  }
+  // B. Fallback: Geocode using Google API
+  else {
+    try {
+      const geo = await geocodeWithGoogle(fullAddress);
+      latitude = geo.latitude;
+      longitude = geo.longitude;
+    } catch (err) {
+      console.warn('[setUserAddress] Coordinate lookup failed:', err.message);
+
+      // If we can't find location, save address WITHOUT location so user isn't blocked
+      return await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`
+          INSERT INTO addresses (user_id, address_line_1, city, postal_code)
+          VALUES (CAST(${userId} AS uuid), ${addressData.address_line_1}, ${addressData.city}, ${addressData.postal_code})
+          ON CONFLICT (user_id) DO UPDATE SET
+            address_line_1 = EXCLUDED.address_line_1,
+            city = EXCLUDED.city,
+            postal_code = EXCLUDED.postal_code;
+        `;
+        return { neighborhoodId: null, latitude: null, longitude: null, assigned: false, error: 'Location not found' };
+      });
+    }
   }
 
-  const latitude = String(geo.latitude);
-  const longitude = String(geo.longitude);
-  console.debug('[setUserAddress] geocoded to', latitude, longitude);
+  // ---------------------------------------------------------
+  // STEP 2: Find Neighborhood (PostGIS)
+  // ---------------------------------------------------------
 
-  // Helper: point SQL expression using parameterized numbers
-  // ST_SetSRID(ST_MakePoint(lon, lat), 4326)
-  // We'll use interpolation which Prisma will parameterize for numbers.
   const lonNum = Number(longitude);
   const latNum = Number(latitude);
 
-  // 2) try strict contains
+  // A. Try Strict Contains (Point inside Polygon)
   let neighborhoods = [];
   try {
     neighborhoods = await prisma.$queryRaw`
@@ -146,30 +110,13 @@ export const setUserAddress = async (userId, addressData) => {
       LIMIT 1;
     `;
   } catch (err) {
-    console.warn('[setUserAddress] ST_Contains error', err && err.message);
-    neighborhoods = [];
+    console.warn('[setUserAddress] ST_Contains error:', err.message);
   }
 
-  // 3) fallback to ST_Within
+  // B. Fallback: Try Nearest Neighbor (within 200m buffer)
   if (!neighborhoods || neighborhoods.length === 0) {
+    const bufferMeters = Number(process.env.NEIGHBORHOOD_FALLBACK_METERS || '200');
     try {
-      neighborhoods = await prisma.$queryRaw`
-        SELECT id
-        FROM neighborhoods
-        WHERE ST_Within(ST_SetSRID(ST_MakePoint(${lonNum}, ${latNum})::geometry, 4326), boundaries::geometry)
-        LIMIT 1;
-      `;
-    } catch (err) {
-      console.warn('[setUserAddress] ST_Within error', err && err.message);
-      neighborhoods = [];
-    }
-  }
-
-  // 4) fallback to nearest within radius (meters) using geography operations
-  if (!neighborhoods || neighborhoods.length === 0) {
-    const bufferMeters = Number(process.env.NEIGHBORHOOD_FALLBACK_METERS || '200'); // default 200m
-    try {
-      // Use boundaries::geography and point::geography for meter-based distance
       neighborhoods = await prisma.$queryRaw`
         SELECT id, ST_Distance(boundaries::geography, ST_SetSRID(ST_MakePoint(${lonNum}, ${latNum}), 4326)::geography) as dist
         FROM neighborhoods
@@ -178,14 +125,17 @@ export const setUserAddress = async (userId, addressData) => {
         LIMIT 1;
       `;
     } catch (err) {
-      console.warn('[setUserAddress] ST_DWithin error', err && err.message);
-      neighborhoods = [];
+      console.warn('[setUserAddress] ST_DWithin error:', err.message);
     }
   }
 
-  // If still none, do not block user — save address and return assigned=false
+  // ---------------------------------------------------------
+  // STEP 3: Save to Database
+  // ---------------------------------------------------------
+
+  // Case: No Neighborhood Found
   if (!neighborhoods || neighborhoods.length === 0) {
-    console.warn('[setUserAddress] no neighborhood match for', { fullAddress, latitude, longitude });
+    console.warn('[setUserAddress] No neighborhood match for:', fullAddress);
     const res = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`
         INSERT INTO addresses (user_id, address_line_1, city, postal_code, location)
@@ -197,15 +147,16 @@ export const setUserAddress = async (userId, addressData) => {
           postal_code = EXCLUDED.postal_code,
           location = EXCLUDED.location;
       `;
-      // do NOT insert membership if neighborhood unknown
       return { neighborhoodId: null, latitude, longitude, assigned: false };
     });
     return res;
   }
 
-  // neighborhood found: upsert and create membership
+  // Case: Neighborhood Found
   const neighborhoodId = neighborhoods[0].id;
+
   const result = await prisma.$transaction(async (tx) => {
+    // Upsert Address
     await tx.$executeRaw`
       INSERT INTO addresses (user_id, address_line_1, city, postal_code, neighborhood_id, location)
       VALUES (CAST(${userId} AS uuid), ${addressData.address_line_1}, ${addressData.city}, ${addressData.postal_code}, ${neighborhoodId}, ST_SetSRID(ST_MakePoint(${lonNum}, ${latNum})::geometry, 4326))
@@ -218,11 +169,13 @@ export const setUserAddress = async (userId, addressData) => {
         location = EXCLUDED.location;
     `;
 
+    // Upsert Membership
     await tx.$executeRaw`
       INSERT INTO neighborhood_memberships (user_id, neighborhood_id)
       VALUES (CAST(${userId} AS uuid), ${neighborhoodId})
       ON CONFLICT (user_id, neighborhood_id) DO NOTHING;
     `;
+
     return { neighborhoodId, latitude, longitude, assigned: true };
   });
 

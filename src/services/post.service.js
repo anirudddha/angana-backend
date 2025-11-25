@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { sendNotification } from './notification.service.js';
 const prisma = new PrismaClient();
 
 export const createPost = async (
@@ -87,8 +88,38 @@ export const createPost = async (
           },
         },
       },
+      author: { select: { full_name: true } },
     },
   });
+
+  // 4) 🔔 Send notification for URGENT posts to all neighborhood members
+  if (isUrgent) {
+    // Get all neighborhood members except the post author
+    const neighborhoodMembers = await prisma.neighborhoodMembership.findMany({
+      where: {
+        neighborhood_id: membership.neighborhood_id,
+        NOT: { user_id: authorId },
+      },
+      select: { user_id: true },
+    });
+
+    const contentPreview = content?.substring(0, 100) || 'New urgent post';
+    const authorName = postWithRelations.author?.full_name || 'Someone';
+
+    // Send notification to each member (async, non-blocking)
+    for (const member of neighborhoodMembers) {
+      sendNotification(
+        member.user_id,
+        `🚨 Urgent: ${authorName}`,
+        contentPreview,
+        {
+          type: 'urgent_post',
+          postId: createdPostId.toString(),
+          neighborhoodId: membership.neighborhood_id.toString(),
+        }
+      ).catch(err => console.error('Failed to send urgent post notification:', err));
+    }
+  }
 
   return postWithRelations;
 };
@@ -96,142 +127,197 @@ export const createPost = async (
 
 // In src/services/post.service.js
 export const getPostDetails = async (postId, currentUserId) => {
-    // 1️⃣ Fetch post with author, media, comments, and counts
-    const post = await prisma.post.findUnique({
-        where: { id: postId },
-        select: {
-          id: true,
-          author_id: true,
-          neighborhood_id: true,
-          content: true,
-          is_pinned: true,
-          is_urgent: true,
-          created_at: true,
-          author: { select: { user_id: true, full_name: true, avatar_url: true } },
-          media: { select: { id: true, url: true } },
-          categories: true,
-          poll: {
+  // 1️⃣ Fetch post with author, media, comments, and counts
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    select: {
+      id: true,
+      author_id: true,
+      neighborhood_id: true,
+      content: true,
+      is_pinned: true,
+      is_urgent: true,
+      created_at: true,
+      author: { select: { user_id: true, full_name: true, avatar_url: true } },
+      media: { select: { id: true, url: true } },
+      categories: true,
+      poll: {
+        include: {
+          options: {
             include: {
-              options: {
-                include: {
-                  _count: { select: { votes: true } }
-                }
-              }
+              _count: { select: { votes: true } }
             }
-          },
-          comments: {
-            where: { parent_comment_id: null },
-            include: {
-              author: { select: { full_name: true, avatar_url: true, user_id: true } },
-              _count: { select: { replies: true } },
-            },
-            orderBy: { created_at: 'asc' },
-          },
-          _count: { select: { likes: true, comments: true } },
+          }
         }
-    });
-
-    if (!post) return null;
-
-    // 👇 ADDED LOGIC FOR POLLS
-    if (post.poll) {
-      const userVote = await prisma.pollVote.findFirst({
-        where: {
-          user_id: currentUserId,
-          option: {
-            poll_id: post.poll.id,
-          },
+      },
+      comments: {
+        where: { parent_comment_id: null },
+        include: {
+          author: { select: { full_name: true, avatar_url: true, user_id: true } },
+          _count: { select: { replies: true } },
         },
-        select: {
-          poll_option_id: true,
-        },
-      });
-
-      let totalVotes = 0;
-      let userVoted = false;
-      let selectedOptionId = null;
-
-      post.poll.options.forEach(option => {
-        totalVotes += option._count.votes;
-        if (userVote && userVote.poll_option_id === option.id) {
-          userVoted = true;
-          selectedOptionId = option.id;
-        }
-      });
-
-      post.poll.has_voted = userVoted;
-      post.poll.selected_option_id = selectedOptionId;
-      post.poll.total_votes = totalVotes;
-
-      if (userVoted) {
-        post.poll.options.forEach(option => {
-          const voteCount = option._count.votes;
-          option.percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
-        });
-      }
+        orderBy: { created_at: 'asc' },
+      },
+      _count: { select: { likes: true, comments: true } },
     }
-    // 👆 END OF ADDED LOGIC FOR POLLS
+  });
 
-    // 2️⃣ Check if the current user has liked the post
-    const userLike = await prisma.postLike.findUnique({
-        where: { user_id_post_id: { user_id: currentUserId, post_id: postId } },
+  if (!post) return null;
+
+  // 👇 ADDED LOGIC FOR POLLS
+  if (post.poll) {
+    const userVote = await prisma.pollVote.findFirst({
+      where: {
+        user_id: currentUserId,
+        option: {
+          poll_id: post.poll.id,
+        },
+      },
+      select: {
+        poll_option_id: true,
+      },
     });
 
-    // 3️⃣ Serialize BigInt fields for JSON safety
-    const serializedPost = JSON.parse(
-        JSON.stringify(
-            {
-                ...post,
-                has_liked: !!userLike
-            },
-            (_, value) => (typeof value === 'bigint' ? value.toString() : value)
-        )
-    );
+    let totalVotes = 0;
+    let userVoted = false;
+    let selectedOptionId = null;
 
-    return serializedPost;
+    post.poll.options.forEach(option => {
+      totalVotes += option._count.votes;
+      if (userVote && userVote.poll_option_id === option.id) {
+        userVoted = true;
+        selectedOptionId = option.id;
+      }
+    });
+
+    post.poll.has_voted = userVoted;
+    post.poll.selected_option_id = selectedOptionId;
+    post.poll.total_votes = totalVotes;
+
+    if (userVoted) {
+      post.poll.options.forEach(option => {
+        const voteCount = option._count.votes;
+        option.percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
+      });
+    }
+  }
+  // 👆 END OF ADDED LOGIC FOR POLLS
+
+  // 2️⃣ Check if the current user has liked the post
+  const userLike = await prisma.postLike.findUnique({
+    where: { user_id_post_id: { user_id: currentUserId, post_id: postId } },
+  });
+
+  // 3️⃣ Serialize BigInt fields for JSON safety
+  const serializedPost = JSON.parse(
+    JSON.stringify(
+      {
+        ...post,
+        has_liked: !!userLike
+      },
+      (_, value) => (typeof value === 'bigint' ? value.toString() : value)
+    )
+  );
+
+  return serializedPost;
 };
 
 
 export const addComment = async (authorId, postId, content) => {
-    // 1️⃣ Ensure the post exists
-    const postExists = await prisma.post.findUnique({
-        where: { id: postId },
+  // 1️⃣ Ensure the post exists and get author info
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    select: {
+      author_id: true,
+      content: true,
+    },
+  });
+
+  if (!post) {
+    throw new Error('Post not found');
+  }
+
+  // 2️⃣ Create the comment
+  const comment = await prisma.postComment.create({
+    data: {
+      post_id: postId,
+      author_id: authorId, // Must match profiles.user_id
+      content,
+    },
+  });
+
+  // 3️⃣ 🔔 Send notification to post author (if not commenting on own post)
+  if (post.author_id !== authorId) {
+    // Get commenter's name
+    const commenter = await prisma.profile.findUnique({
+      where: { user_id: authorId },
+      select: { full_name: true },
     });
 
-    if (!postExists) {
-        throw new Error('Post not found');
-    }
+    const commenterName = commenter?.full_name || 'Someone';
+    const commentPreview = content.substring(0, 100);
 
-    // 2️⃣ Create the comment
-    const comment = await prisma.postComment.create({
-        data: {
-            post_id: postId,
-            author_id: authorId, // Must match profiles.user_id
-            content,
-        },
-    });
+    sendNotification(
+      post.author_id,
+      'New comment on your post',
+      `${commenterName} commented: ${commentPreview}`,
+      {
+        type: 'post_comment',
+        postId: postId.toString(),
+        commentId: comment.id.toString(),
+      }
+    ).catch(err => console.error('Failed to send comment notification:', err));
+  }
 
-    // 3️⃣ Serialize BigInt fields
-    const serializedComment = JSON.parse(
-        JSON.stringify(comment, (_, value) =>
-            typeof value === 'bigint' ? value.toString() : value
-        )
-    );
+  // 4️⃣ Serialize BigInt fields
+  const serializedComment = JSON.parse(
+    JSON.stringify(comment, (_, value) =>
+      typeof value === 'bigint' ? value.toString() : value
+    )
+  );
 
-    return serializedComment;
+  return serializedComment;
 };
 
 export const likePost = async (userId, postId) => {
-    // Use upsert to prevent race conditions or duplicate likes.
-    return prisma.postLike.upsert({
-        where: { user_id_post_id: { user_id: userId, post_id: postId } },
-        update: {},
-        create: { user_id: userId, post_id: postId }
+  // Use upsert to prevent race conditions or duplicate likes.
+  const like = await prisma.postLike.upsert({
+    where: { user_id_post_id: { user_id: userId, post_id: postId } },
+    update: {},
+    create: { user_id: userId, post_id: postId }
+  });
+
+  // 🔔 Send notification to post author (if not liking own post)
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    select: { author_id: true },
+  });
+
+  if (post && post.author_id !== userId) {
+    // Get liker's name
+    const liker = await prisma.profile.findUnique({
+      where: { user_id: userId },
+      select: { full_name: true },
     });
+
+    const likerName = liker?.full_name || 'Someone';
+
+    sendNotification(
+      post.author_id,
+      'Someone liked your post',
+      `${likerName} liked your post`,
+      {
+        type: 'post_like',
+        postId: postId.toString(),
+      }
+    ).catch(err => console.error('Failed to send like notification:', err));
+  }
+
+  return like;
 };
 
 export const unlikePost = async (userId, postId) => {
-    return prisma.postLike.delete({
-        where: { user_id_post_id: { user_id: userId, post_id: postId } }
-    });
+  return prisma.postLike.delete({
+    where: { user_id_post_id: { user_id: userId, post_id: postId } }
+  });
 };

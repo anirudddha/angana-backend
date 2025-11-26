@@ -95,7 +95,7 @@ export const getGroupDetails = async (groupId, currentUserId) => {
 export const findGroupsInNeighborhood = async (currentUserId) => {
   // Step 1: Fetch the user's address to get their neighborhood_id
   const userAddress = await prisma.address.findUnique({
-    where: { user_id: currentUserId },
+    where: { user_id: currentUserId.user_id },
     select: { neighborhood_id: true }
   });
   if (!userAddress || !userAddress.neighborhood_id) {
@@ -116,10 +116,10 @@ export const findGroupsInNeighborhood = async (currentUserId) => {
       // This is the key addition: we fetch the membership record ONLY for the current user.
       memberships: {
         where: {
-          user_id: currentUserId,
+          user_id: currentUserId.id,
         },
         select: {
-          status: 'active', // We only need their status ('active', 'pending', etc.)
+          status: true, // We only need their status ('active', 'pending', etc.)
         },
       },
     },

@@ -31,7 +31,7 @@ export const getGroupDetailsController = asyncHandler(async (req, res) => {
 export const findGroupsInNeighborhoodController = asyncHandler(async (req, res) => {
   // Get the current user's ID from the authenticated request object.
   // Your `authenticate` middleware provides this.
-  const currentUserId = req.user.user_id;
+  const currentUserId = req.user;
 
   // Pass only the user's ID into the service function.
   // The service will fetch the neighborhood_id from the address table.

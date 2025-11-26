@@ -119,7 +119,7 @@ export const findGroupsInNeighborhood = async (currentUserId) => {
           user_id: currentUserId,
         },
         select: {
-          status: true, // We only need their status ('active', 'pending', etc.)
+          status: 'active', // We only need their status ('active', 'pending', etc.)
         },
       },
     },

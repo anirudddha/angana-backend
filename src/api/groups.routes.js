@@ -17,16 +17,15 @@ import {
 import {
   createGroupPostController,
   getGroupFeedController
-} from '../controllers/groupPosts.controller.js'
+} from '../controllers/groupPosts.controller.js';
 
 const router = Router();
 router.use(authenticate);
 
 // General group routes
 router.route('/')
-  .post(createGroupController);
-
-router.get('/neighborhood/:id', findGroupsInNeighborhoodController);
+  .post(createGroupController)
+  .get(findGroupsInNeighborhoodController);
 
 // Routes for a specific group
 router.route('/:id')

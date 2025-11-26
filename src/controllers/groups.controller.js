@@ -29,15 +29,14 @@ export const getGroupDetailsController = asyncHandler(async (req, res) => {
 });
 
 export const findGroupsInNeighborhoodController = asyncHandler(async (req, res) => {
-  const neighborhoodId = BigInt(req.params.id);
-  
   // Get the current user's ID from the authenticated request object.
   // Your `authenticate` middleware provides this.
-  const currentUserId = req.user.id; 
+  const currentUserId = req.user.user_id;
 
-  // Pass the user's ID into the service function.
-  const groups = await groupService.findGroupsInNeighborhood(neighborhoodId, currentUserId);
-  
+  // Pass only the user's ID into the service function.
+  // The service will fetch the neighborhood_id from the address table.
+  const groups = await groupService.findGroupsInNeighborhood(currentUserId);
+
   // Apply the helper here (it works on arrays of objects too)
   res.status(200).json(serializeBigInt(groups));
 });
@@ -45,7 +44,7 @@ export const findGroupsInNeighborhoodController = asyncHandler(async (req, res) 
 export const joinGroupController = asyncHandler(async (req, res) => {
   const groupId = BigInt(req.params.id);
   // console.log(req.user);
-  const membership = await groupService.joinGroup(req.user.user_id,req.user.id, groupId);
+  const membership = await groupService.joinGroup(req.user.user_id, req.user.id, groupId);
   // Apply the helper here
   res.status(200).json(serializeBigInt(membership));
 });
@@ -71,11 +70,11 @@ export const manageMemberController = asyncHandler(async (req, res) => {
   const userId = req.params.userId || req.params.userId; // ensure your route uses :userId
 
   // Accept action/role from body, then fallback to query or params
-  const actionFromBody  = req.body && Object.keys(req.body).length ? req.body.action : undefined;
-  const roleFromBody    = req.body && Object.keys(req.body).length ? req.body.role   : undefined;
+  const actionFromBody = req.body && Object.keys(req.body).length ? req.body.action : undefined;
+  const roleFromBody = req.body && Object.keys(req.body).length ? req.body.role : undefined;
 
   const action = actionFromBody ?? req.query.action ?? req.params.action ?? undefined;
-  const role   = roleFromBody   ?? req.query.role   ?? req.params.role   ?? undefined;
+  const role = roleFromBody ?? req.query.role ?? req.params.role ?? undefined;
 
   // If no action provided anywhere, treat as "remove"
   const effectiveAction = action ?? 'remove';
@@ -102,7 +101,7 @@ export const manageMemberController = asyncHandler(async (req, res) => {
 export const getGroupMembersController = asyncHandler(async (req, res) => {
   const groupId = BigInt(req.params.id);
   const members = await groupService.getGroupMembers(groupId);
-  
+
   // The service returns an array, which the helper can serialize correctly
   res.status(200).json(serializeBigInt(members));
 });

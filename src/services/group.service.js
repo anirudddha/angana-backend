@@ -90,10 +90,21 @@ export const getGroupDetails = async (groupId, currentUserId) => {
 };
 
 /**
- * Fetches all public groups within a given neighborhood.
+ * Fetches all public groups within the current user's neighborhood.
  */
-export const findGroupsInNeighborhood = async (neighborhoodId, currentUserId) => {
-  // Step 1: Fetch all public groups and conditionally include the current user's membership.
+export const findGroupsInNeighborhood = async (currentUserId) => {
+  // Step 1: Fetch the user's address to get their neighborhood_id
+  const userAddress = await prisma.address.findUnique({
+    where: { user_id: currentUserId },
+    select: { neighborhood_id: true }
+  });
+  if (!userAddress || !userAddress.neighborhood_id) {
+    throw new Error("User address or neighborhood not found. Please update your address.");
+  }
+
+  const neighborhoodId = userAddress.neighborhood_id;
+
+  // Step 2: Fetch all public groups and conditionally include the current user's membership.
   const groups = await prisma.group.findMany({
     where: {
       neighborhood_id: neighborhoodId,
@@ -115,16 +126,16 @@ export const findGroupsInNeighborhood = async (neighborhoodId, currentUserId) =>
     orderBy: { created_at: 'desc' }
   });
 
-  // Step 2: Transform the data to create the simple `membership_status` field the frontend expects.
+  // Step 3: Transform the data to create the simple `membership_status` field the frontend expects.
   return groups.map(group => {
     // The 'memberships' array will have one item if the user is a member, or be empty if not.
-    const membership = group.memberships[0]; 
-    
+    const membership = group.memberships[0];
+
     // Create the new property. It will be 'active', 'pending', or null.
     const membership_status = membership ? membership.status : null;
 
     // Remove the temporary 'memberships' array from the final object for a clean API response.
-    delete group.memberships; 
+    delete group.memberships;
 
     // Return the original group data merged with the new membership_status field.
     return { ...group, membership_status };
@@ -134,7 +145,7 @@ export const findGroupsInNeighborhood = async (neighborhoodId, currentUserId) =>
 /**
  * Allows a user to join a group or request to join a private one.
  */
-export const joinGroup = async (userId,uuId, groupId) => {
+export const joinGroup = async (userId, uuId, groupId) => {
   // Step 1: Find the group without rejectOnNotFound
   const group = await prisma.group.findUnique({
     where: { id: groupId },
@@ -143,7 +154,7 @@ export const joinGroup = async (userId,uuId, groupId) => {
   // Step 2: Manually check if the group exists and throw an error if it doesn't
   if (!group) {
     // This creates a "not found" error similar to what rejectOnNotFound does
-    throw new Error(`Group with ID ${groupId} not found.`); 
+    throw new Error(`Group with ID ${groupId} not found.`);
   }
 
 

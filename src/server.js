@@ -5,7 +5,7 @@ import { app } from './app.js';
 import { initializeSocketIO } from './real-time/connection.js'; // your socket setup file
 
 // Load environment variables
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 8080;
 
 // Create HTTP server from Express app
 const httpServer = createServer(app);

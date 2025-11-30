@@ -14,7 +14,7 @@ function stringifyBigInts(obj) {
 }
 
 export const getFeedController = asyncHandler(async (req, res) => {
-  const authUserId = req.user.user_id; // Supabase Auth user ID
+  const authUserId = req.user.user_id; // User ID from JWT (Google sub)
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
 

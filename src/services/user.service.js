@@ -30,3 +30,23 @@ export const getPublicUserProfile = async (userId) => {
     },
   });
 };
+
+export const getUserNeighborhood = async (userId) => {
+  // 1. Try to get from Address (primary location)
+  const address = await prisma.address.findUnique({
+    where: { user_id: userId },
+    select: { neighborhood_id: true },
+  });
+
+  if (address?.neighborhood_id) {
+    return address.neighborhood_id;
+  }
+
+  // 2. Fallback: Try to get from Memberships (if they joined without an address, though unlikely with current flow)
+  const membership = await prisma.neighborhoodMembership.findFirst({
+    where: { user_id: userId },
+    select: { neighborhood_id: true },
+  });
+
+  return membership?.neighborhood_id || null;
+};

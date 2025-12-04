@@ -1,5 +1,6 @@
 import asyncHandler from 'express-async-handler';
 import * as babysitterService from '../services/babysitter.service.js';
+import { getUserNeighborhood } from '../services/user.service.js';
 
 // Convert BigInt -> string throughout the object so JSON.stringify won't throw
 const serializeBigInt = (obj) =>
@@ -39,11 +40,11 @@ export const removeMyBabysitterProfileController = asyncHandler(async (req, res)
  * Get babysitters for a neighborhood (neighborhood id is BigInt)
  */
 export const getNeighborhoodBabysittersController = asyncHandler(async (req, res) => {
-  let neighborhoodId;
-  try {
-    neighborhoodId = BigInt(req.params.id);
-  } catch (e) {
-    return res.status(400).json({ message: 'Invalid neighborhood ID' });
+  const authUserId = req.user.user_id;
+
+  const neighborhoodId = await getUserNeighborhood(authUserId);
+  if (!neighborhoodId) {
+    return res.status(400).json({ message: 'User is not part of any neighborhood' });
   }
 
   const sitters = await babysitterService.getBabysittersForNeighborhood(neighborhoodId);

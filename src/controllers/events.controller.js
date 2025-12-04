@@ -1,5 +1,6 @@
 import asyncHandler from 'express-async-handler';
 import * as eventService from '../services/event.service.js';
+import { getUserNeighborhood } from '../services/user.service.js';
 
 // Converts all BigInt values in an object to strings
 const serializeBigInt = (obj) =>
@@ -13,7 +14,12 @@ export const createEventController = asyncHandler(async (req, res) => {
 });
 
 export const getEventsForNeighborhoodController = asyncHandler(async (req, res) => {
-  const neighborhoodId = BigInt(req.params.id);
+  const neighborhoodId = await getUserNeighborhood(req.user.user_id);
+
+  if (!neighborhoodId) {
+    return res.status(400).json({ message: 'User is not part of any neighborhood' });
+  }
+
   const events = await eventService.getEventsForNeighborhood(neighborhoodId);
   res.status(200).json(serializeBigInt(events));
 });

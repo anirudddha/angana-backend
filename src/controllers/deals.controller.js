@@ -1,5 +1,6 @@
 import asyncHandler from 'express-async-handler';
 import { createDeal, getDealsForNeighborhood, updateDeal, getDealById, getDealsForBusiness } from '../services/deal.service.js';
+import { getUserNeighborhood } from '../services/user.service.js';
 
 export const createDealController = asyncHandler(async (req, res) => {
   try {
@@ -27,8 +28,8 @@ export const createDealController = asyncHandler(async (req, res) => {
 
 export const getDealsForNeighborhoodController = asyncHandler(async (req, res) => {
   try {
-    const neighborhoodId = req.params.id;
-    if (!neighborhoodId) return res.status(400).json({ message: 'Neighborhood ID is required.' });
+    const neighborhoodId = await getUserNeighborhood(req.user.user_id);
+    if (!neighborhoodId) return res.status(400).json({ message: 'User is not part of any neighborhood.' });
 
     const deals = await getDealsForNeighborhood(neighborhoodId);
 

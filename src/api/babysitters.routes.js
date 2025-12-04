@@ -17,13 +17,14 @@ router.route('/me')
   .post(setMyBabysitterProfileController) // Create or update
   .delete(removeMyBabysitterProfileController) // Opt-out
   .get(getMyBabysitterProfileController);
+
 // For parents to find babysitters
-router.get('/neighborhood/:id', getNeighborhoodBabysittersController);
+router.get('/neighborhood', getNeighborhoodBabysittersController);
 
 // For interacting with a specific babysitter's profile
 router.route('/:id')
   .get(getBabysitterDetailsController);
-  
+
 // For adding a recommendation to a specific babysitter
 router.post('/:id/recommendations', createRecommendationController);
 

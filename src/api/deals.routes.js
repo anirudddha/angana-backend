@@ -23,7 +23,7 @@ router.post('/', checkVerifiedBusiness, createDealController);
 router.put('/:id', checkVerifiedBusiness, updateDealController); // <-- new route
 
 // Route for fetching deals - any logged-in user can access this
-router.get('/neighborhood/:id', getDealsForNeighborhoodController);
+router.get('/neighborhood', getDealsForNeighborhoodController);
 
 router.get('/my', checkVerifiedBusiness, getMyDealsController);
 

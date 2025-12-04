@@ -1,6 +1,7 @@
 // src/controllers/pets.controller.js
 import asyncHandler from 'express-async-handler';
 import * as petService from '../services/pet.service.js';
+import { getUserNeighborhood } from '../services/user.service.js';
 
 // Helper to convert BigInt to string for JSON
 const serializeBigInt = (obj) =>
@@ -79,13 +80,10 @@ export const getPetDetailsController = asyncHandler(async (req, res) => {
 
 // Get safe pets in a neighborhood
 export const getNeighborhoodPetsController = asyncHandler(async (req, res) => {
-  const { id } = req.params;
+  const neighborhoodId = await getUserNeighborhood(req.user.user_id);
 
-  let neighborhoodId;
-  try {
-    neighborhoodId = BigInt(id);
-  } catch (e) {
-    return res.status(400).json({ message: 'Invalid neighborhood ID' });
+  if (!neighborhoodId) {
+    return res.status(400).json({ message: 'User is not part of any neighborhood' });
   }
 
   const pets = await petService.getPetsForNeighborhood(neighborhoodId, 'safe');
@@ -94,13 +92,10 @@ export const getNeighborhoodPetsController = asyncHandler(async (req, res) => {
 
 // Get lost pets in a neighborhood
 export const getLostNeighborhoodPetsController = asyncHandler(async (req, res) => {
-  const { id } = req.params;
+  const neighborhoodId = await getUserNeighborhood(req.user.user_id);
 
-  let neighborhoodId;
-  try {
-    neighborhoodId = BigInt(id);
-  } catch (e) {
-    return res.status(400).json({ message: 'Invalid neighborhood ID' });
+  if (!neighborhoodId) {
+    return res.status(400).json({ message: 'User is not part of any neighborhood' });
   }
 
   const pets = await petService.getPetsForNeighborhood(neighborhoodId, 'lost');

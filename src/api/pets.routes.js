@@ -23,8 +23,8 @@ router.route('/')
 router.get('/me', getMyPetsController);
 
 // For getting a directory of pets in a neighborhood
-router.get('/neighborhood/:id', getNeighborhoodPetsController);
-router.get('/neighborhood/:id/lost', getLostNeighborhoodPetsController);
+router.get('/neighborhood', getNeighborhoodPetsController);
+router.get('/neighborhood/lost', getLostNeighborhoodPetsController);
 
 // For interacting with a specific pet profile
 router.route('/:id')

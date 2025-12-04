@@ -26,7 +26,7 @@ router.route('/my-rsvps')
 router.route('/my-events')
   .get(getMyEventsController);
 
-router.route('/neighborhood/:id')
+router.route('/neighborhood')
   .get(getEventsForNeighborhoodController);
 
 // Routes for a specific event

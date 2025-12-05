@@ -86,12 +86,13 @@ export const initializeSocketIO = (httpServer) => {
       // Verify JWT
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+      console.log(decoded);
       // IMPORTANT: use the same lookup as your express middleware:
       // find profile by user_id (not by id)
       const user = await prisma.profile.findUnique({
-        where: { id: decoded.id }, // <-- same as express authenticate middleware
+        where: { user_id: decoded.user_id }, // <-- same as express authenticate middleware
       });
-
+      console.log(user);
       if (!user) {
         return next(new Error('Authentication error: User not found.'));
       }

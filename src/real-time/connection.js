@@ -89,7 +89,7 @@ export const initializeSocketIO = (httpServer) => {
       // IMPORTANT: use the same lookup as your express middleware:
       // find profile by user_id (not by id)
       const user = await prisma.profile.findUnique({
-        where: { user_id: decoded.id }, // <-- same as express authenticate middleware
+        where: { id: decoded.id }, // <-- same as express authenticate middleware
       });
 
       if (!user) {
